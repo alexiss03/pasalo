@@ -1,0 +1,59 @@
+"use client";
+
+import { useState } from "react";
+import { apiFetch } from "../lib/api";
+import { getAuthToken } from "../lib/auth";
+
+type Conversation = {
+  id: string;
+};
+
+export function StartChatButton({
+  listingId,
+  isOpenForNewBuyers,
+  transactionStatus,
+}: {
+  listingId: string;
+  isOpenForNewBuyers: boolean;
+  transactionStatus: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startChat = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setError("Login first to start a chat.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const conversation = await apiFetch<Conversation>("/conversations", {
+        method: "POST",
+        token,
+        body: { listingId },
+      });
+      window.location.href = `/messages/${conversation.id}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start chat");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid" style={{ gap: 8 }}>
+      <button className="primary" onClick={startChat} type="button" disabled={loading || !isOpenForNewBuyers}>
+        {loading ? "Opening..." : "Message Seller"}
+      </button>
+      {!isOpenForNewBuyers && (
+        <p className="small" style={{ margin: 0 }}>
+          Listing is currently <strong>{transactionStatus}</strong> and locked for new buyers.
+        </p>
+      )}
+      {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+    </div>
+  );
+}
