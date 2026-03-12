@@ -81,12 +81,15 @@ export default function LoginPage() {
       </form>
 
       <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-        <button className="ghost" onClick={() => setMode("login")} type="button">
-          Login mode
-        </button>
-        <button className="ghost" onClick={() => setMode("signup")} type="button">
-          Signup mode
-        </button>
+        {mode === "login" ? (
+          <button className="ghost" onClick={() => setMode("signup")} type="button">
+            Sign up
+          </button>
+        ) : (
+          <button className="ghost" onClick={() => setMode("login")} type="button">
+            Back to login
+          </button>
+        )}
       </div>
 
       {status && <p>{status}</p>}

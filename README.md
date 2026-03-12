@@ -38,6 +38,7 @@ Implementation baseline for the Pasalo v1 MVP.
 - `GET /api/v1/listings/:id`
 - `PATCH /api/v1/listings/:id`
 - `PATCH /api/v1/listings/:id/market-status`
+- `GET /api/v1/listings/:id/leads`
 - `POST /api/v1/listings/:id/publish`
 - `POST /api/v1/listings/:id/pause`
 - `POST /api/v1/listings/:id/reconfirm`
@@ -69,11 +70,13 @@ Implementation baseline for the Pasalo v1 MVP.
 - Signup allows `buyer` and `seller` roles only.
 - Users can request additional roles (for example `agent`) after registration through role applications.
 - Listings are created as `draft` and can be submitted to `pending_review`.
+- Listing creation now requires a digitally accepted Seller Listing Agreement (typed-name + checkbox signature) with commission %, lead validity months, and payment due days.
 - Search endpoint returns only `live` listings by default.
 - Payment-related text is blocked in inquiries, chat messages, and viewing notes.
 - Payments are tracked as in-app payment intents inside conversation threads.
 - Conversation inbox includes unread counts; opening threads marks incoming messages as read (`read_at`) and shows minute-based read time.
 - Listings now track both `transaction_status` (available, auctioned, in deal, buying in progress, bought, released) and legal `transfer_status`.
 - When a listing is not open to new buyers (`in_deal`, `buying_in_progress`, `bought`, or `auctioned`), new buyer inquiries/conversation starts are blocked unless it is the active buyer.
+- Platform lead records are automatically logged on inquiry, conversation start, and viewing request with buyer name, contact number, email, inquiry date, and property ID.
 - Core schema includes deal, messaging, verification, watchlist, and audit tables for next sprints.
 - Freshness job is included: `npm run job:freshness --workspace @pasalo/api`.

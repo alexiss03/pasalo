@@ -3,6 +3,15 @@ import { computeListingFinancials, CreateListingRequest, validateListingFinancia
 import { z } from "zod";
 import { pool } from "../../db/pool";
 
+const sellerAgreementSchema = z.object({
+  accepted: z.literal(true),
+  signedName: z.string().min(2).max(150),
+  commissionRatePct: z.number().min(3).max(5),
+  leadValidityMonths: z.number().int().min(6).max(12),
+  paymentDueDays: z.number().int().min(1).max(30),
+  signatureMethod: z.literal("typed_name_checkbox"),
+});
+
 const createListingSchema = z.object({
   propertyType: z.enum(["condo", "house_lot", "lot_only"]),
   projectName: z.string().min(2),
@@ -21,6 +30,22 @@ const createListingSchema = z.object({
     monthlyAmortizationPhp: z.number().nonnegative(),
     cashOutPricePhp: z.number().nonnegative(),
   }),
+  transactionStatus: z.enum(["available", "auctioned", "in_deal", "buying_in_progress", "bought", "released"]).optional(),
+  transferStatus: z
+    .enum([
+      "not_started",
+      "document_review",
+      "developer_approval",
+      "contract_signing",
+      "transfer_in_process",
+      "transfer_completed",
+      "transfer_blocked",
+    ])
+    .optional(),
+  isAuctionEnabled: z.boolean().optional(),
+  auctionBiddingDays: z.number().int().min(1).max(90).optional(),
+  photoUrls: z.array(z.string().url()).max(15).optional(),
+  sellerAgreement: sellerAgreementSchema,
 }) satisfies z.ZodType<CreateListingRequest>;
 
 const patchListingSchema = createListingSchema.partial();
@@ -48,10 +73,25 @@ const listingMediaSchema = z.object({
 });
 
 const listQuerySchema = z.object({
+  q: z.string().optional(),
   city: z.string().optional(),
   province: z.string().optional(),
   type: z.enum(["condo", "house_lot", "lot_only"]).optional(),
   developer: z.string().optional(),
+  transactionStatus: z
+    .enum(["available", "auctioned", "in_deal", "buying_in_progress", "bought", "released"])
+    .optional(),
+  transferStatus: z
+    .enum([
+      "not_started",
+      "document_review",
+      "developer_approval",
+      "contract_signing",
+      "transfer_in_process",
+      "transfer_completed",
+      "transfer_blocked",
+    ])
+    .optional(),
   cashOutMax: z.coerce.number().optional(),
   monthlyMax: z.coerce.number().optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -89,13 +129,41 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       fastify.authorizeRoles(request, ["seller", "agent"]);
 
-      const body = createListingSchema.parse(request.body);
+      const parsed = createListingSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          message: "Validation error",
+          details: parsed.error.issues,
+        });
+      }
+      const body = parsed.data;
       const financialErrors = validateListingFinancials(body.financials);
       if (financialErrors.length) {
         throw fastify.httpErrors.badRequest(financialErrors.join("; "));
       }
 
       const computed = computeListingFinancials(body.financials);
+      const sanitizedPhotoUrls = (body.photoUrls ?? []).map((url) => url.trim()).filter(Boolean);
+      const shouldAuction = Boolean(body.isAuctionEnabled) || body.transactionStatus === "auctioned";
+      const auctionBiddingDays = shouldAuction ? body.auctionBiddingDays : undefined;
+      if (shouldAuction && !auctionBiddingDays) {
+        throw fastify.httpErrors.badRequest("auctionBiddingDays is required when auction is enabled");
+      }
+
+      const transactionStatus = shouldAuction ? "auctioned" : (body.transactionStatus ?? "available");
+      const transferStatus = body.transferStatus ?? "not_started";
+      const auctionStartAt = shouldAuction ? new Date() : null;
+      const auctionEndAt =
+        shouldAuction && auctionBiddingDays
+          ? new Date(auctionStartAt!.getTime() + auctionBiddingDays * 24 * 60 * 60 * 1000)
+          : null;
+      const sellerAgreement = body.sellerAgreement;
+      const leadDefinition =
+        "A platform lead means any buyer account that first inquired, requested viewing, or started conversation for this listing through the platform.";
+      const commissionClause = `The seller agrees that any buyer introduced through this platform shall be considered a platform lead. If the property is sold to such buyer within ${sellerAgreement.leadValidityMonths} months from introduction, the seller agrees to pay a commission of ${sellerAgreement.commissionRatePct}% of the final selling price.`;
+      const paymentClause = `If the seller enters into a sale, contract to sell, or any transfer agreement with a buyer introduced through the platform, the seller shall pay the agreed commission within ${sellerAgreement.paymentDueDays} days of the transaction.`;
+      const signerIp = request.ip ?? null;
+      const signerUserAgent = request.headers["user-agent"]?.slice(0, 500) ?? null;
 
       const client = await pool.connect();
       try {
@@ -116,9 +184,15 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             description,
             status,
             last_confirmed_at,
-            readiness_score
+            readiness_score,
+            transaction_status,
+            transfer_status,
+            auction_enabled,
+            auction_start_at,
+            auction_end_at,
+            auction_bidding_days
           )
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30,$12,$13,$14,$15,$16,$17)
           returning *
         `,
           [
@@ -133,6 +207,12 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             body.turnoverDate ?? null,
             body.title,
             body.description,
+            transactionStatus,
+            transferStatus,
+            shouldAuction,
+            auctionStartAt,
+            auctionEndAt,
+            auctionBiddingDays ?? null,
           ],
         );
 
@@ -170,6 +250,51 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
           [listing.id, request.user.sub],
         );
 
+        for (let i = 0; i < sanitizedPhotoUrls.length; i += 1) {
+          await client.query(
+            `
+            insert into listing_media (listing_id, media_type, storage_key, is_primary)
+            values ($1, 'image', $2, $3)
+          `,
+            [listing.id, sanitizedPhotoUrls[i], i === 0],
+          );
+        }
+
+        await client.query(
+          `
+          insert into listing_seller_agreements (
+            listing_id,
+            seller_user_id,
+            agreement_version,
+            commission_rate_pct,
+            lead_validity_months,
+            payment_due_days,
+            lead_definition,
+            commission_clause,
+            payment_clause,
+            signed_name,
+            signature_method,
+            signer_ip,
+            signer_user_agent
+          )
+          values ($1,$2,'seller_listing_agreement_v1',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `,
+          [
+            listing.id,
+            request.user.sub,
+            sellerAgreement.commissionRatePct,
+            sellerAgreement.leadValidityMonths,
+            sellerAgreement.paymentDueDays,
+            leadDefinition,
+            commissionClause,
+            paymentClause,
+            sellerAgreement.signedName,
+            sellerAgreement.signatureMethod,
+            signerIp,
+            signerUserAgent,
+          ],
+        );
+
         await client.query("commit");
         return reply.code(201).send({ listingId: listing.id });
       } catch (error) {
@@ -186,6 +311,12 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     const whereClauses: string[] = ["l.status = 'live'"];
     const values: Array<string | number | boolean> = [];
 
+    if (query.q) {
+      values.push(`%${query.q}%`);
+      whereClauses.push(
+        `(l.title ilike $${values.length} or l.project_name ilike $${values.length} or l.developer_name ilike $${values.length} or l.location_city ilike $${values.length} or l.location_province ilike $${values.length})`,
+      );
+    }
     if (query.city) {
       values.push(query.city);
       whereClauses.push(`l.location_city = $${values.length}`);
@@ -201,6 +332,14 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     if (query.developer) {
       values.push(query.developer);
       whereClauses.push(`l.developer_name = $${values.length}`);
+    }
+    if (query.transactionStatus) {
+      values.push(query.transactionStatus);
+      whereClauses.push(`l.transaction_status = $${values.length}`);
+    }
+    if (query.transferStatus) {
+      values.push(query.transferStatus);
+      whereClauses.push(`l.transfer_status = $${values.length}`);
     }
     if (query.cashOutMax !== undefined) {
       values.push(query.cashOutMax);
@@ -230,6 +369,9 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
           l.status,
           l.transaction_status,
           l.transfer_status,
+          l.auction_enabled,
+          l.auction_end_at,
+          l.auction_bidding_days,
           (l.transaction_status = any(array['available'::listing_transaction_status, 'released'::listing_transaction_status])) as is_open_for_new_buyers,
           l.last_confirmed_at,
           l.readiness_score,
@@ -568,6 +710,50 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
       );
 
       return updatedResult.rows[0];
+    },
+  );
+
+  fastify.get(
+    "/listings/:id/leads",
+    {
+      preHandler: [fastify.authenticate],
+    },
+    async (request) => {
+      fastify.authorizeRoles(request, ["seller", "agent", "admin"]);
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+
+      const listingResult = await pool.query("select id, owner_user_id from listings where id = $1", [params.id]);
+      if (!listingResult.rowCount) {
+        throw fastify.httpErrors.notFound("Listing not found");
+      }
+
+      const listing = listingResult.rows[0];
+      const isOwner = listing.owner_user_id === request.user.sub;
+      if (!isOwner && request.user.role !== "admin") {
+        throw fastify.httpErrors.forbidden("Only listing owner or admin can view lead records");
+      }
+
+      const leadsResult = await pool.query(
+        `
+        select
+          listing_id as property_id,
+          buyer_user_id,
+          buyer_name,
+          buyer_phone as contact_number,
+          buyer_email,
+          first_inquiry_at as inquiry_date,
+          last_activity_at
+        from platform_leads
+        where listing_id = $1
+        order by first_inquiry_at desc
+      `,
+        [params.id],
+      );
+
+      return {
+        listingId: params.id,
+        items: leadsResult.rows,
+      };
     },
   );
 

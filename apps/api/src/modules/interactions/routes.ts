@@ -55,6 +55,45 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   };
 
+  const upsertLeadRecord = async (listingId: string, buyerUserId: string) => {
+    await pool.query(
+      `
+      insert into platform_leads (
+        listing_id,
+        buyer_user_id,
+        buyer_name,
+        buyer_phone,
+        buyer_email,
+        source,
+        first_inquiry_at,
+        last_activity_at,
+        updated_at
+      )
+      select
+        $1,
+        u.id,
+        p.full_name,
+        p.phone,
+        u.email,
+        'platform',
+        now(),
+        now(),
+        now()
+      from users u
+      left join profiles p on p.user_id = u.id
+      where u.id = $2
+      on conflict (listing_id, buyer_user_id)
+      do update set
+        buyer_name = coalesce(excluded.buyer_name, platform_leads.buyer_name),
+        buyer_phone = coalesce(excluded.buyer_phone, platform_leads.buyer_phone),
+        buyer_email = excluded.buyer_email,
+        last_activity_at = now(),
+        updated_at = now()
+    `,
+      [listingId, buyerUserId],
+    );
+  };
+
   const getConversationForUser = async (conversationId: string, userId: string, role: string) => {
     const convoResult = await pool.query(
       `
@@ -146,6 +185,8 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
         [params.id, request.user.sub, body.message ?? null],
       );
 
+      await upsertLeadRecord(params.id, request.user.sub);
+
       return reply.code(201).send(result.rows[0]);
     },
   );
@@ -219,6 +260,7 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
       );
 
       if (existing.rowCount) {
+        await upsertLeadRecord(body.listingId, buyerUserId);
         return existing.rows[0];
       }
 
@@ -232,6 +274,8 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
       `,
         [body.listingId, buyerUserId, listing.owner_user_id],
       );
+
+      await upsertLeadRecord(body.listingId, buyerUserId);
 
       return reply.code(201).send(inserted.rows[0]);
     },
@@ -419,6 +463,8 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
       `,
         [params.id, request.user.sub, sellerUserId, body.proposedAt, body.notes ?? null],
       );
+
+      await upsertLeadRecord(params.id, request.user.sub);
 
       return reply.code(201).send(inserted.rows[0]);
     },

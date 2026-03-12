@@ -52,6 +52,19 @@ export interface CreateListingRequest {
   title: string;
   description: string;
   financials: ListingFinancialInput;
+  transactionStatus?: ListingTransactionStatus;
+  transferStatus?: ListingTransferStatus;
+  isAuctionEnabled?: boolean;
+  auctionBiddingDays?: number;
+  photoUrls?: string[];
+  sellerAgreement: {
+    accepted: boolean;
+    signedName: string;
+    commissionRatePct: number;
+    leadValidityMonths: number;
+    paymentDueDays: number;
+    signatureMethod: "typed_name_checkbox";
+  };
 }
 
 export interface ListingSummary {

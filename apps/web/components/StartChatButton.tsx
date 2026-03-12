@@ -11,11 +11,9 @@ type Conversation = {
 export function StartChatButton({
   listingId,
   isOpenForNewBuyers,
-  transactionStatus,
 }: {
   listingId: string;
   isOpenForNewBuyers: boolean;
-  transactionStatus: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +48,7 @@ export function StartChatButton({
       </button>
       {!isOpenForNewBuyers && (
         <p className="small" style={{ margin: 0 }}>
-          Listing is currently <strong>{transactionStatus}</strong> and locked for new buyers.
+          Listing is locked for new buyers right now.
         </p>
       )}
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}

@@ -22,8 +22,6 @@ interface ListingDetail {
   unit_number: string | null;
   turnover_date: string | null;
   status: string;
-  transaction_status: string;
-  transfer_status: string;
   is_open_for_new_buyers: boolean;
   readiness_score: number;
   seller_name: string;
@@ -37,19 +35,35 @@ interface ListingDetail {
   media?: ListingMedia[];
 }
 
-function humanize(value: string): string {
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function formatPhp(amount: string | number): string {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0,
   }).format(Number(amount));
+}
+
+function formatDateOnly(value: string | null): string {
+  if (!value) {
+    return "N/A";
+  }
+
+  const datePart = value.split("T")[0];
+  if (!datePart) {
+    return "N/A";
+  }
+
+  const [year, month, day] = datePart.split("-").map(Number);
+  if (!year || !month || !day) {
+    return datePart;
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 export default async function ListingDetailPage({
@@ -97,8 +111,6 @@ export default async function ListingDetailPage({
           {listing.verification_status === "verified" && <span className="badge">Verified Pasalo</span>}
           <span className="badge">Readiness {listing.readiness_score}</span>
           <span className="badge">Status {listing.status}</span>
-          <span className="badge">Deal {humanize(listing.transaction_status)}</span>
-          <span className="badge">Transfer {humanize(listing.transfer_status)}</span>
           {!listing.is_open_for_new_buyers && <span className="badge">Not Open To New Buyers</span>}
         </div>
       </div>
@@ -119,7 +131,7 @@ export default async function ListingDetailPage({
           <p>Developer: {listing.developer_name}</p>
           <p>Floor area: {listing.floor_area_sqm} sqm</p>
           <p>Unit number: {listing.unit_number ?? "N/A"}</p>
-          <p>Turnover date: {listing.turnover_date ?? "N/A"}</p>
+          <p>Turnover date: {formatDateOnly(listing.turnover_date)}</p>
           <p>Seller: {listing.seller_name}</p>
         </div>
       </div>
@@ -150,7 +162,6 @@ export default async function ListingDetailPage({
         <StartChatButton
           listingId={listing.id}
           isOpenForNewBuyers={listing.is_open_for_new_buyers}
-          transactionStatus={listing.transaction_status}
         />
       </div>
     </section>
