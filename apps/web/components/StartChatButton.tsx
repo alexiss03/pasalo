@@ -21,7 +21,7 @@ export function StartChatButton({
   const startChat = async () => {
     const token = getAuthToken();
     if (!token) {
-      setError("Login first to start a chat.");
+      window.location.href = `/login?next=${encodeURIComponent(`/listings/${listingId}`)}`;
       return;
     }
 
@@ -43,12 +43,12 @@ export function StartChatButton({
 
   return (
     <div className="grid" style={{ gap: 8 }}>
-      <button className="primary" onClick={startChat} type="button" disabled={loading || !isOpenForNewBuyers}>
+      <button className="primary" onClick={startChat} type="button" disabled={loading}>
         {loading ? "Opening..." : "Message Seller"}
       </button>
       {!isOpenForNewBuyers && (
         <p className="small" style={{ margin: 0 }}>
-          Listing is locked for new buyers right now.
+          Listing is currently locked for new buyers. Existing participants can continue in Messages.
         </p>
       )}
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}

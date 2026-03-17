@@ -1,10 +1,19 @@
 create extension if not exists pgcrypto;
 
-create type user_role as enum ('buyer', 'seller', 'agent', 'admin');
+create type user_role as enum ('buyer', 'seller', 'agent', 'attorney', 'admin');
 create type listing_status as enum ('draft', 'pending_review', 'live', 'paused', 'expired', 'rejected', 'archived');
 create type property_type as enum ('condo', 'house_lot', 'lot_only');
 create type verification_status as enum ('unverified', 'pending', 'verified', 'rejected');
-create type verification_doc_type as enum ('reservation_agreement', 'soa', 'id', 'government_clearance_optional');
+create type verification_doc_type as enum (
+  'reservation_agreement',
+  'soa',
+  'id',
+  'government_clearance_optional',
+  'transfer_document',
+  'title_or_tax_declaration',
+  'authority_document'
+);
+create type ai_doc_auth_status as enum ('pass', 'review', 'fail');
 create type document_review_status as enum ('pending', 'approved', 'rejected');
 create type inquiry_status as enum ('open', 'qualified', 'closed');
 create type viewing_status as enum ('proposed', 'accepted', 'rejected', 'rescheduled', 'completed');
@@ -79,6 +88,10 @@ create table if not exists listing_verifications (
   user_id uuid not null references users(id) on delete cascade,
   doc_type verification_doc_type not null,
   file_key text not null,
+  ai_auth_status ai_doc_auth_status not null default 'review',
+  ai_confidence numeric(5,4) not null default 0.5,
+  ai_flags text[] not null default '{}'::text[],
+  ai_checked_at timestamptz,
   status document_review_status not null default 'pending',
   reviewed_by uuid references users(id),
   reviewed_at timestamptz,
@@ -186,6 +199,7 @@ create index if not exists idx_listings_owner on listings(owner_user_id);
 create index if not exists idx_listings_last_confirmed on listings(last_confirmed_at desc);
 create index if not exists idx_listing_financials_cash_out on listing_financials(cash_out_price_php);
 create index if not exists idx_listing_financials_monthly on listing_financials(monthly_amortization_php);
+create index if not exists idx_listing_verifications_ai_auth_status on listing_verifications(ai_auth_status);
 create index if not exists idx_inquiries_listing on inquiries(listing_id);
 create index if not exists idx_messages_conversation_created on messages(conversation_id, created_at desc);
 create index if not exists idx_deals_current_stage on deal_pipelines(current_stage);

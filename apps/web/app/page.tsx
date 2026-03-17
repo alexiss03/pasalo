@@ -13,6 +13,11 @@ interface ListingItem {
   readiness_score: number;
   is_verified: boolean;
   is_open_for_new_buyers: boolean;
+  transaction_status: string;
+  auction_enabled: boolean;
+  auction_end_at: string | null;
+  created_at: string;
+  is_featured: boolean;
   last_confirmed_at: string | null;
   preview_image_url?: string | null;
 }
@@ -21,6 +26,22 @@ interface ListingFeed {
   items: ListingItem[];
   degraded?: boolean;
 }
+
+const fallbackImages = {
+  hero:
+    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=80",
+  thumb:
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+};
+
+const samplePhotoPool = [
+  "https://images.unsplash.com/photo-1600607687644-aac4c3eac7f4?auto=format&fit=crop&w=1400&q=80",
+  "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80",
+  "https://images.unsplash.com/photo-1600566752227-8f3bce9e1a5f?auto=format&fit=crop&w=1400&q=80",
+  "https://images.unsplash.com/photo-1600573472591-ee6b68d14c68?auto=format&fit=crop&w=1400&q=80",
+  "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1400&q=80",
+  "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1400&q=80",
+];
 
 type BrowseFilters = {
   q?: string;
@@ -39,6 +60,14 @@ function formatPhp(amount: string | number): string {
     currency: "PHP",
     maximumFractionDigits: 0,
   }).format(Number(amount));
+}
+
+function formatTagLabel(value: string): string {
+  const clean = value.replaceAll("_", " ").trim();
+  if (!clean) {
+    return value;
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
 function normalizeFilters(raw: Record<string, string | string[] | undefined>): BrowseFilters {
@@ -136,6 +165,68 @@ function isCategoryActive(category: BrowseFilters, filters: BrowseFilters): bool
   return true;
 }
 
+function stringHash(input: string): number {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function resolveListingImage(item: ListingItem, variant: "hero" | "thumb"): string {
+  const source = item.preview_image_url;
+  if (source && !source.startsWith("/placeholders/")) {
+    return source;
+  }
+
+  const poolIndex = stringHash(`${item.id}-${variant}`) % samplePhotoPool.length;
+  if (variant === "hero") {
+    return samplePhotoPool[poolIndex] ?? fallbackImages.hero;
+  }
+
+  return samplePhotoPool[poolIndex] ?? fallbackImages.thumb;
+}
+
+function toReadinessPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function readinessToneClass(value: number): string {
+  const score = toReadinessPercent(value);
+  if (score >= 85) {
+    return "readiness-high";
+  }
+  if (score >= 65) {
+    return "readiness-mid";
+  }
+  return "readiness-low";
+}
+
+const testimonials = [
+  {
+    quote:
+      "We closed our condo pasalo in under three weeks because buyers immediately understood the real cash-out and monthly terms.",
+    name: "Rizky",
+    role: "First-time Homebuyer",
+  },
+  {
+    quote:
+      "The verified listing process filtered unserious inquiries. We only handled buyers that were ready to proceed with transfer steps.",
+    name: "Andrea",
+    role: "Unit Seller",
+  },
+  {
+    quote:
+      "Compared to scattered group posts, this gave us one clean place to compare projects, turnover windows, and total cost.",
+    name: "Miguel",
+    role: "Property Investor",
+  },
+];
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -156,79 +247,182 @@ export default async function HomePage({
   ];
 
   let data: ListingFeed = { items: [] };
-  let error: string | null = null;
+  let discoveryData: ListingFeed = { items: [] };
+  let degraded = false;
 
   try {
     data = await apiFetch<ListingFeed>(toApiPath(filters));
-  } catch (err) {
-    error = err instanceof Error ? err.message : "Unable to load listings";
+  } catch {
+    degraded = true;
+  }
+  try {
+    discoveryData = await apiFetch<ListingFeed>("/listings?page=1&pageSize=20");
+  } catch {
+    degraded = true;
+  }
+  if (!discoveryData.items.length) {
+    discoveryData = data;
   }
 
-  const heroListing = data.items[0];
-  const sideTopListing = data.items[1] ?? heroListing;
-  const sideBottomListing = data.items[2] ?? sideTopListing ?? heroListing;
+  const now = Date.now();
+  const toTimestamp = (value: string | null | undefined): number => {
+    if (!value) {
+      return 0;
+    }
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const openItems = data.items.filter((item) => item.is_open_for_new_buyers);
+  const displayItems = openItems.length ? openItems : data.items;
+
+  const sectionSource = (() => {
+    const source = discoveryData.items.length ? discoveryData.items : data.items;
+    const openSource = source.filter((item) => item.is_open_for_new_buyers);
+    return openSource.length ? openSource : source;
+  })();
+
+  const topListings = [...sectionSource]
+    .sort((a, b) => {
+      if (a.is_featured !== b.is_featured) {
+        return Number(b.is_featured) - Number(a.is_featured);
+      }
+      if (a.readiness_score !== b.readiness_score) {
+        return b.readiness_score - a.readiness_score;
+      }
+      return toTimestamp(b.last_confirmed_at ?? b.created_at) - toTimestamp(a.last_confirmed_at ?? a.created_at);
+    })
+    .slice(0, 4);
+
+  const newestListings = [...sectionSource]
+    .sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at))
+    .slice(0, 4);
+
+  const ongoingBiddings = [...sectionSource]
+    .filter((item) => {
+      if (item.transaction_status !== "auctioned" || !item.auction_enabled) {
+        return false;
+      }
+      const endAt = toTimestamp(item.auction_end_at);
+      return endAt === 0 || endAt > now;
+    })
+    .sort((a, b) => toTimestamp(a.auction_end_at) - toTimestamp(b.auction_end_at))
+    .slice(0, 4);
+
+  const heroListing = displayItems[0];
+  const categoryHighlights = [
+    {
+      label: "Apartments",
+      title: "Stylish City Apartments",
+      copy: "Explore urban apartments with easier transfer terms and practical monthly dues.",
+      href: toBrowseHref({ ...filters, type: "condo" }),
+    },
+    {
+      label: "Commercial",
+      title: "Prime Commercial Spaces",
+      copy: "Find office and retail units for investors and business owners looking for pasalo exits.",
+      href: toBrowseHref({ ...filters, q: "commercial" }),
+    },
+    {
+      label: "Land",
+      title: "Residential & Investment Land",
+      copy: "Discover lot-only pasalo opportunities for future homes and long-term land plays.",
+      href: toBrowseHref({ ...filters, type: "lot_only" }),
+      accent: true,
+    },
+  ];
+
+  const renderEditorialCard = (item: ListingItem, keyPrefix: string) => (
+    <Link className="listing-card-link" href={`/listings/${item.id}`} key={`${keyPrefix}-${item.id}`}>
+      <article className="card listing-card peg-listing-card editorial-listing-card">
+        <img
+          alt={item.title}
+          className="listing-thumbnail"
+          loading="lazy"
+          src={resolveListingImage(item, "thumb")}
+        />
+        <div className="editorial-listing-body">
+          <div className="editorial-listing-head">
+            <p className="editorial-listing-type">{formatTagLabel(item.property_type)}</p>
+            <span className="editorial-listing-arrow">↗</span>
+          </div>
+          <h3 className="peg-listing-title">{item.title}</h3>
+          <p className="small peg-listing-location">
+            {item.project_name} • {item.location_city}, {item.location_province}
+          </p>
+          <div className="peg-listing-financials">
+            <span>Cash out: {formatPhp(item.cash_out_price_php)}</span>
+            <span>Monthly: {formatPhp(item.monthly_amortization_php)}</span>
+          </div>
+          <div className="readiness-block">
+            <div className="readiness-head">
+              <span>Readiness</span>
+              <strong>{toReadinessPercent(item.readiness_score)}%</strong>
+            </div>
+            <div aria-hidden="true" className="readiness-track">
+              <div
+                className={`readiness-fill ${readinessToneClass(item.readiness_score)}`}
+                style={{ width: `${toReadinessPercent(item.readiness_score)}%` }}
+              />
+            </div>
+          </div>
+          <div className="peg-listing-badges">
+            {item.is_verified && <span className="badge">Verified Pasalo</span>}
+            {!item.is_open_for_new_buyers && <span className="badge">Not open for new buyers</span>}
+            {item.transaction_status === "auctioned" && <span className="badge">Auction</span>}
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
 
   return (
     <section className="market-shell">
-      <section className="peg-stage">
-        <article className="peg-main-card">
-          <div className="peg-main-copy">
+      <section className="editorial-shell">
+        <div className="editorial-category-row">
+          {categoryHighlights.map((highlight) => (
+            <Link className={`editorial-category-card${highlight.accent ? " editorial-category-card-accent" : ""}`} href={highlight.href} key={highlight.label}>
+              <p>{highlight.label}</p>
+              <h3>{highlight.title}</h3>
+              <span>{highlight.copy}</span>
+            </Link>
+          ))}
+        </div>
+
+        <article className="editorial-hero-card">
+          <div className="editorial-hero-topbar">
+            <strong>PASALO PROPERTY</strong>
             <div>
-              <p className="peg-eyebrow">Verified Pasalo Listings</p>
-              <h1>Find a place you will call home</h1>
+              <span>Projects</span>
+              <span>Properties</span>
+              <span>Partners</span>
+              <span>Contact</span>
             </div>
-            <div className="peg-hero-sidecopy">
-              <p>Launch scope: Metro Manila, Laguna, Cavite. Listings are sorted by verification and freshness.</p>
-              {heroListing && (
-                <Link className="hero-mini-deal" href={`/listings/${heroListing.id}`}>
-                  <span>{heroListing.project_name}</span>
-                  <strong>{formatPhp(heroListing.cash_out_price_php)}</strong>
-                </Link>
-              )}
-            </div>
+            <button type="button">Book a call</button>
           </div>
 
           {heroListing ? (
-            <Link className="peg-main-image-wrap" href={`/listings/${heroListing.id}`}>
-              {heroListing.preview_image_url ? (
-                <img alt={heroListing.title} className="peg-main-image" loading="lazy" src={heroListing.preview_image_url} />
-              ) : (
-                <div className="peg-main-image peg-main-image-fallback">No photo yet</div>
-              )}
-            </Link>
-          ) : (
-            <div className="peg-main-image peg-main-image-fallback">No listing photo yet</div>
-          )}
-        </article>
-
-        <aside className="peg-side-rail">
-          {sideTopListing && (
-            <Link className="peg-side-card" href={`/listings/${sideTopListing.id}`}>
-              {sideTopListing.preview_image_url ? (
-                <img alt={sideTopListing.title} className="peg-side-card-image" loading="lazy" src={sideTopListing.preview_image_url} />
-              ) : (
-                <div className="peg-side-card-image peg-main-image-fallback">No photo yet</div>
-              )}
-              <div className="peg-side-card-meta">
-                <p>{sideTopListing.project_name}</p>
-                <h3>{sideTopListing.title}</h3>
-                <strong>{formatPhp(sideTopListing.cash_out_price_php)}</strong>
+            <Link className="editorial-hero-media" href={`/listings/${heroListing.id}`}>
+              <img
+                alt={heroListing.title}
+                className="editorial-hero-image"
+                loading="lazy"
+                src={resolveListingImage(heroListing, "hero")}
+              />
+              <div className="editorial-hero-overlay">
+                <p>Find Your Perfect Property, Made Simple</p>
+                <span>
+                  Launch scope: Metro Manila, Laguna, Cavite. Featured listing: {heroListing.project_name} • Cash out{" "}
+                  {formatPhp(heroListing.cash_out_price_php)}.
+                </span>
               </div>
             </Link>
+          ) : (
+            <div className="editorial-hero-image peg-main-image-fallback" aria-label="Featured Pasalo property placeholder" role="img">
+              <strong>Featured Pasalo property</strong>
+              <span>New verified listings from Metro Manila, Laguna, and Cavite will appear here.</span>
+            </div>
           )}
-          <p className="peg-side-note">
-            Virtual tours, verified documents, and guided transfer steps so buyers can move with confidence.
-          </p>
-          {sideBottomListing && (
-            <Link className="peg-side-photo" href={`/listings/${sideBottomListing.id}`}>
-              {sideBottomListing.preview_image_url ? (
-                <img alt={sideBottomListing.title} className="peg-side-photo-img" loading="lazy" src={sideBottomListing.preview_image_url} />
-              ) : (
-                <div className="peg-side-photo-img peg-main-image-fallback">No photo yet</div>
-              )}
-            </Link>
-          )}
-        </aside>
+        </article>
       </section>
 
       <section className="peg-filter-studio">
@@ -287,53 +481,83 @@ export default async function HomePage({
         </form>
       </section>
 
-      {error && <p className="error">{error}</p>}
-      {!error && data.degraded && (
-        <p className="small">Listing database is currently unavailable. Showing an empty fallback feed.</p>
-      )}
-
-      <section className="peg-results">
-        <div className="peg-results-head">
-          <h3>Fresh inventory</h3>
-          <p className="small">Sorted by verification and freshness.</p>
+      <section className="testimonial-strip market-section">
+        <div className="testimonial-strip-head">
+          <div>
+            <p>[05]</p>
+            <h3>What Our Clients Say</h3>
+            <span>Real experiences from sellers, buyers, and investors using verified pasalo listings.</span>
+          </div>
+          <div className="testimonial-reviews-chip">
+            <strong>200+</strong>
+            <span>Client reviews</span>
+          </div>
         </div>
-
-        <div className="grid grid-2">
-        {data.items.map((item) => (
-          <Link className="listing-card-link" href={`/listings/${item.id}`} key={item.id}>
-            <article className="card listing-card peg-listing-card">
-              {item.preview_image_url ? (
-                <img alt={item.title} className="listing-thumbnail" loading="lazy" src={item.preview_image_url} />
-              ) : (
-                <div className="listing-thumbnail listing-thumbnail-fallback">No photo yet</div>
-              )}
-              <h3 className="peg-listing-title">{item.title}</h3>
-              <p className="small peg-listing-location">
-                {item.project_name} • {item.location_city}, {item.location_province}
-              </p>
-              <div className="peg-listing-financials">
-                <span>Cash out: {formatPhp(item.cash_out_price_php)}</span>
-                <span>Monthly: {formatPhp(item.monthly_amortization_php)}</span>
-              </div>
-              <div className="peg-listing-badges">
-                <span className="badge">{item.property_type}</span>
-                {item.is_verified && <span className="badge">Verified Pasalo</span>}
-                <span className="badge">Readiness {item.readiness_score}</span>
-                {!item.is_open_for_new_buyers && <span className="badge">Locked</span>}
-              </div>
+        <div className="testimonial-grid">
+          {testimonials.map((item) => (
+            <article className="testimonial-card" key={item.name}>
+              <p>{item.quote}</p>
+              <strong>{item.name}</strong>
+              <span>{item.role}</span>
             </article>
-          </Link>
-        ))}
+          ))}
         </div>
       </section>
 
-      {!data.items.length && !error && (
-        <div className="card">
-          <p className="small" style={{ margin: 0 }}>
-            No listings matched your current search/filter. Try resetting filters.
-          </p>
-        </div>
+      {degraded && (
+        <p className="small">Listing database is currently unavailable. Showing an empty fallback feed.</p>
       )}
+
+      <section className="market-sections-stack">
+        <section className="peg-results market-section">
+          <div className="peg-results-head">
+            <h3>Top Listings</h3>
+            <p className="small">Featured and high-readiness listings.</p>
+          </div>
+          <div className="section-grid">
+            {topListings.map((item) => renderEditorialCard(item, "top"))}
+          </div>
+          {!topListings.length && <p className="section-empty">No top listings available yet.</p>}
+        </section>
+
+        <section className="peg-results market-section">
+          <div className="peg-results-head">
+            <h3>Newest Listings</h3>
+            <p className="small">Recently added inventory.</p>
+          </div>
+          <div className="section-grid">
+            {newestListings.map((item) => renderEditorialCard(item, "new"))}
+          </div>
+          {!newestListings.length && <p className="section-empty">No new listings available yet.</p>}
+        </section>
+
+        <section className="peg-results market-section">
+          <div className="peg-results-head">
+            <h3>Ongoing Biddings</h3>
+            <p className="small">Auction listings currently open for bidding.</p>
+          </div>
+          <div className="section-grid">
+            {ongoingBiddings.map((item) => renderEditorialCard(item, "bid"))}
+          </div>
+          {!ongoingBiddings.length && <p className="section-empty">No ongoing biddings right now.</p>}
+        </section>
+
+        <section className="peg-results market-section">
+          <div className="peg-results-head">
+            <h3>Fresh inventory</h3>
+            <p className="small">Sorted by verification and freshness.</p>
+          </div>
+
+          <div className="section-grid">
+            {displayItems.map((item) => renderEditorialCard(item, "fresh"))}
+          </div>
+          {!displayItems.length && (
+            <p className="section-empty">
+              No listings matched your current search/filter. Try resetting filters.
+            </p>
+          )}
+        </section>
+      </section>
     </section>
   );
 }

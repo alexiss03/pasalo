@@ -7,9 +7,11 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo 'No lint for API yet'",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed-dummy.ts",
     "job:freshness": "tsx src/jobs/freshness.ts"
   },
   "dependencies": {

@@ -11,6 +11,8 @@ import { profileRoutes } from "./modules/profile/routes";
 import { listingRoutes } from "./modules/listings/routes";
 import { interactionRoutes } from "./modules/interactions/routes";
 import { adminRoutes } from "./modules/admin/routes";
+import { pool } from "./db/pool";
+import { hashPassword } from "./lib/password";
 
 const app = Fastify({
   logger: true,
@@ -53,13 +55,70 @@ app.setErrorHandler((error, _request, reply) => {
   }
 
   const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
+  const errorMessage = error instanceof Error ? error.message : "Internal server error";
   return reply.code(statusCode).send({
-    message: error.message || "Internal server error",
+    message: errorMessage,
   });
 });
 
+const ensureDefaultAdmin = async () => {
+  if (!env.ENABLE_DEFAULT_ADMIN) {
+    app.log.info("Default admin bootstrap is disabled.");
+    return;
+  }
+
+  const email = env.DEFAULT_ADMIN_EMAIL.trim().toLowerCase();
+  const passwordHash = await hashPassword(env.DEFAULT_ADMIN_PASSWORD);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    const userResult = await client.query(
+      `
+      insert into users (email, password_hash, auth_provider, role)
+      values ($1, $2, 'email', 'admin')
+      on conflict (email)
+      do update set
+        password_hash = excluded.password_hash,
+        auth_provider = 'email',
+        role = 'admin',
+        updated_at = now()
+      returning id, email
+    `,
+      [email, passwordHash],
+    );
+
+    const user = userResult.rows[0];
+
+    await client.query(
+      `
+      insert into profiles (user_id, full_name, phone, verification_status, verification_badge_shown)
+      values ($1, 'Standard Admin', '0000000000', 'verified', true)
+      on conflict (user_id)
+      do update set
+        full_name = coalesce(profiles.full_name, excluded.full_name),
+        phone = coalesce(profiles.phone, excluded.phone),
+        verification_status = 'verified',
+        verification_badge_shown = true,
+        updated_at = now()
+    `,
+      [user.id],
+    );
+
+    await client.query("commit");
+    app.log.info({ email }, "Default admin account is ready.");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 const start = async () => {
   try {
+    await ensureDefaultAdmin();
     await app.listen({ port: env.PORT, host: env.HOST });
   } catch (error) {
     app.log.error(error);

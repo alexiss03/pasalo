@@ -9,10 +9,14 @@
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
     "dev:web": "npm run dev --workspace @pasalo/web",
+    "dev:admin": "npm run dev --workspace @pasalo/admin",
     "dev:api": "npm run dev --workspace @pasalo/api",
+    "test": "npm run test --workspace @pasalo/shared && npm run test --workspace @pasalo/api",
     "build": "npm run build --workspaces --if-present",
+    "build:admin": "npm run build --workspace @pasalo/admin",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "db:migrate": "npm run db:migrate --workspace @pasalo/api"
+    "db:migrate": "npm run db:migrate --workspace @pasalo/api",
+    "start:admin": "npm run start --workspace @pasalo/admin"
   }
 }

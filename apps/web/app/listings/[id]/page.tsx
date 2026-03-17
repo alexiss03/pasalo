@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { apiFetch } from "../../../lib/api";
 import { StartChatButton } from "../../../components/StartChatButton";
+import { ListingPhotoCarousel } from "../../../components/ListingPhotoCarousel";
+import { FavoriteToggleButton } from "../../../components/FavoriteToggleButton";
 
 interface ListingMedia {
   id: string;
@@ -32,6 +34,9 @@ interface ListingDetail {
   monthly_amortization_php: string;
   cash_out_price_php: string;
   est_total_cost_php: string;
+  remaining_amortization_months: number | string;
+  available_in_pagibig: boolean;
+  available_in_house_loan: boolean;
   media?: ListingMedia[];
 }
 
@@ -66,6 +71,44 @@ function formatDateOnly(value: string | null): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+function formatLoanAvailability(listing: ListingDetail): string {
+  const options: string[] = [];
+  if (listing.available_in_pagibig) {
+    options.push("Pag-IBIG");
+  }
+  if (listing.available_in_house_loan) {
+    options.push("In-house loan");
+  }
+
+  return options.length ? options.join(", ") : "N/A";
+}
+
+function formatTagLabel(value: string): string {
+  const clean = value.replaceAll("_", " ").trim();
+  if (!clean) {
+    return value;
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+function toReadinessPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function readinessToneClass(value: number): string {
+  const score = toReadinessPercent(value);
+  if (score >= 85) {
+    return "readiness-high";
+  }
+  if (score >= 65) {
+    return "readiness-mid";
+  }
+  return "readiness-low";
+}
+
 export default async function ListingDetailPage({
   params,
 }: {
@@ -88,18 +131,26 @@ export default async function ListingDetailPage({
         <h1 style={{ marginTop: 0 }}>Listing unavailable</h1>
         <p className="error">{error ?? "This listing could not be loaded."}</p>
         <Link className="nav-chip" href="/">
-          Back to Browse
+          Browse
         </Link>
       </section>
     );
   }
+
+  const photos = (listing.media ?? [])
+    .filter((item) => item.media_type === "image")
+    .map((item) => ({
+      id: item.id,
+      src: item.storage_key,
+      isPrimary: item.is_primary,
+    }));
 
   return (
     <section className="grid" style={{ gap: 18 }}>
       <div className="card">
         <p style={{ marginTop: 0 }}>
           <Link className="nav-chip" href="/">
-            Back to Browse
+            Browse
           </Link>
         </p>
         <h1 style={{ marginBottom: 8 }}>{listing.title}</h1>
@@ -107,47 +158,99 @@ export default async function ListingDetailPage({
           {listing.project_name} • {listing.location_city}, {listing.location_province}
         </p>
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <span className="badge">{listing.property_type}</span>
+          <span className="badge">{formatTagLabel(listing.property_type)}</span>
           {listing.verification_status === "verified" && <span className="badge">Verified Pasalo</span>}
-          <span className="badge">Readiness {listing.readiness_score}</span>
-          <span className="badge">Status {listing.status}</span>
-          {!listing.is_open_for_new_buyers && <span className="badge">Not Open To New Buyers</span>}
+          <span className="badge">Status {formatTagLabel(listing.status)}</span>
         </div>
-      </div>
-
-      <div className="card grid grid-2">
-        <div>
-          <h3 style={{ marginTop: 0 }}>Financial Breakdown</h3>
-          <p>Cash out: {formatPhp(listing.cash_out_price_php)}</p>
-          <p>Monthly: {formatPhp(listing.monthly_amortization_php)}</p>
-          <p>Original price: {formatPhp(listing.original_price_php)}</p>
-          <p>Equity paid: {formatPhp(listing.equity_paid_php)}</p>
-          <p>Remaining balance: {formatPhp(listing.remaining_balance_php)}</p>
-          <p>Total estimated cost: {formatPhp(listing.est_total_cost_php)}</p>
-        </div>
-
-        <div>
-          <h3 style={{ marginTop: 0 }}>Property Details</h3>
-          <p>Developer: {listing.developer_name}</p>
-          <p>Floor area: {listing.floor_area_sqm} sqm</p>
-          <p>Unit number: {listing.unit_number ?? "N/A"}</p>
-          <p>Turnover date: {formatDateOnly(listing.turnover_date)}</p>
-          <p>Seller: {listing.seller_name}</p>
-        </div>
-      </div>
-
-      {listing.media && listing.media.some((item) => item.media_type === "image") && (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Photos</h3>
-          <div className="photo-grid">
-            {listing.media
-              .filter((item) => item.media_type === "image")
-              .map((item) => (
-                <img alt={listing.title} key={item.id} loading="lazy" src={item.storage_key} />
-              ))}
+        <div className="readiness-block" style={{ marginTop: 10, maxWidth: 280 }}>
+          <div className="readiness-head">
+            <span>Readiness</span>
+            <strong>{toReadinessPercent(listing.readiness_score)}%</strong>
+          </div>
+          <div aria-hidden="true" className="readiness-track">
+            <div
+              className={`readiness-fill ${readinessToneClass(listing.readiness_score)}`}
+              style={{ width: `${toReadinessPercent(listing.readiness_score)}%` }}
+            />
           </div>
         </div>
+        <div style={{ marginTop: 12 }}>
+          <FavoriteToggleButton listingId={listing.id} />
+        </div>
+      </div>
+
+      {photos.length > 0 && (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Photos</h3>
+          <ListingPhotoCarousel photos={photos} title={listing.title} />
+        </div>
       )}
+
+      <div className="card grid grid-2">
+        <div className="detail-section">
+          <h3 style={{ marginTop: 0 }}>Financial Breakdown</h3>
+          <div className="detail-list">
+            <p className="detail-row">
+              <span>Cash out:</span>
+              <strong>{formatPhp(listing.cash_out_price_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Monthly:</span>
+              <strong>{formatPhp(listing.monthly_amortization_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Original price:</span>
+              <strong>{formatPhp(listing.original_price_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Equity paid:</span>
+              <strong>{formatPhp(listing.equity_paid_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Remaining balance:</span>
+              <strong>{formatPhp(listing.remaining_balance_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Total estimated cost:</span>
+              <strong>{formatPhp(listing.est_total_cost_php)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Remaining months:</span>
+              <strong>{Number(listing.remaining_amortization_months)} months</strong>
+            </p>
+            <p className="detail-row">
+              <span>Loan availability:</span>
+              <strong>{formatLoanAvailability(listing)}</strong>
+            </p>
+          </div>
+        </div>
+
+        <div className="detail-section">
+          <h3 style={{ marginTop: 0 }}>Property Details</h3>
+          <div className="detail-list">
+            <p className="detail-row">
+              <span>Developer:</span>
+              <strong>{listing.developer_name}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Floor area:</span>
+              <strong>{listing.floor_area_sqm} sqm</strong>
+            </p>
+            <p className="detail-row">
+              <span>Unit number:</span>
+              <strong>{listing.unit_number ?? "N/A"}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Turnover date:</span>
+              <strong>{formatDateOnly(listing.turnover_date)}</strong>
+            </p>
+            <p className="detail-row">
+              <span>Seller:</span>
+              <strong>{listing.seller_name}</strong>
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Description</h3>

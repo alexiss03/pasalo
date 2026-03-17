@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { PAYMENT_BLOCK_MESSAGE, detectPaymentRelatedContent } from "@pasalo/shared";
 import { pool } from "../../db/pool";
+import { env } from "../../config/env";
 
 const inquirySchema = z.object({
   message: z.string().min(1).max(1000).optional(),
@@ -33,15 +34,198 @@ const createPaymentIntentSchema = z.object({
 });
 
 const patchPaymentIntentSchema = z.object({
-  action: z.enum(["pay", "cancel"]),
+  action: z.enum(["pay", "refresh", "cancel"]),
 });
 
 const textInputSchema = z.object({
   text: z.string(),
 });
 
+type PayMongoCheckoutResponse = {
+  data?: {
+    id?: string;
+    attributes?: {
+      checkout_url?: string;
+      status?: string;
+      payment_intent?: {
+        id?: string;
+        attributes?: {
+          status?: string;
+        };
+      };
+      payments?: Array<{
+        id?: string;
+        attributes?: {
+          status?: string;
+        };
+      }>;
+    };
+  };
+  errors?: Array<{ detail?: string; code?: string }>;
+};
+
 export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
   const openTransactionStatuses = new Set(["available", "released"]);
+  const payMongoSecretKey = env.PAYMONGO_SECRET_KEY?.trim() ?? "";
+  const payMongoEnabled = payMongoSecretKey.length > 0;
+  const payMongoApiBaseUrl = env.PAYMONGO_API_BASE_URL.replace(/\/$/, "");
+  const payMongoPaymentMethodTypes = env.PAYMONGO_PAYMENT_METHOD_TYPES.split(",")
+    .map((method) => method.trim())
+    .filter(Boolean);
+  const payMongoAuthHeader = payMongoEnabled
+    ? `Basic ${Buffer.from(`${payMongoSecretKey}:`).toString("base64")}`
+    : "";
+
+  const toMinorUnitPhp = (amountPhp: number) => Math.round(amountPhp * 100);
+
+  const parsePayMongoError = (payload: PayMongoCheckoutResponse | null, fallback: string) => {
+    const detail = payload?.errors?.[0]?.detail?.trim();
+    return detail?.length ? detail : fallback;
+  };
+
+  const getCheckoutStatus = (payload: PayMongoCheckoutResponse | null): string => {
+    return payload?.data?.attributes?.status?.toString() ?? "unknown";
+  };
+
+  const extractPayMongoPaymentIntentId = (payload: PayMongoCheckoutResponse | null): string | null => {
+    return payload?.data?.attributes?.payment_intent?.id?.toString() ?? null;
+  };
+
+  const isCheckoutPaid = (payload: PayMongoCheckoutResponse | null): boolean => {
+    const checkoutStatus = payload?.data?.attributes?.status?.toLowerCase();
+    if (checkoutStatus === "paid") {
+      return true;
+    }
+
+    const paymentIntentStatus = payload?.data?.attributes?.payment_intent?.attributes?.status?.toLowerCase();
+    if (paymentIntentStatus === "succeeded" || paymentIntentStatus === "paid") {
+      return true;
+    }
+
+    const payments = payload?.data?.attributes?.payments ?? [];
+    return payments.some((item) => {
+      const status = item.attributes?.status?.toLowerCase();
+      return status === "paid" || status === "succeeded";
+    });
+  };
+
+  const createPayMongoCheckout = async (payload: {
+    paymentIntentId: string;
+    conversationId: string;
+    listingId: string;
+    amountPhp: number;
+    note?: string | null;
+    payerName: string;
+    payerEmail: string;
+    payerPhone: string;
+  }) => {
+    if (!payMongoEnabled) {
+      throw fastify.httpErrors.serviceUnavailable(
+        "PayMongo is not configured. Set PAYMONGO_SECRET_KEY in the API environment.",
+      );
+    }
+    if (!payMongoPaymentMethodTypes.length) {
+      throw fastify.httpErrors.serviceUnavailable(
+        "PayMongo payment methods are not configured. Set PAYMONGO_PAYMENT_METHOD_TYPES in the API environment.",
+      );
+    }
+
+    const amountMinor = toMinorUnitPhp(payload.amountPhp);
+    if (amountMinor < 100) {
+      throw fastify.httpErrors.badRequest("Minimum PayMongo payment amount is PHP 1.00.");
+    }
+
+    const response = await fetch(`${payMongoApiBaseUrl}/checkout_sessions`, {
+      method: "POST",
+      headers: {
+        Authorization: payMongoAuthHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        data: {
+          attributes: {
+            billing: {
+              name: payload.payerName,
+              email: payload.payerEmail,
+              phone: payload.payerPhone,
+            },
+            send_email_receipt: false,
+            show_description: true,
+            show_line_items: true,
+            line_items: [
+              {
+                currency: "PHP",
+                amount: amountMinor,
+                name: "Pasalo In-App Payment",
+                quantity: 1,
+                description: payload.note ?? `Payment intent ${payload.paymentIntentId}`,
+              },
+            ],
+            payment_method_types: payMongoPaymentMethodTypes,
+            description: `Pasalo payment for listing ${payload.listingId}`,
+            success_url: `${env.PAYMONGO_PUBLIC_BASE_URL}/messages/${payload.conversationId}?payment=success&paymentIntentId=${payload.paymentIntentId}`,
+            cancel_url: `${env.PAYMONGO_PUBLIC_BASE_URL}/messages/${payload.conversationId}?payment=cancel&paymentIntentId=${payload.paymentIntentId}`,
+            metadata: {
+              payment_intent_id: payload.paymentIntentId,
+              conversation_id: payload.conversationId,
+              listing_id: payload.listingId,
+            },
+          },
+        },
+      }),
+    });
+
+    const result = (await response.json().catch(() => null)) as PayMongoCheckoutResponse | null;
+    if (!response.ok) {
+      throw fastify.httpErrors.badGateway(
+        parsePayMongoError(result, "Failed to create PayMongo checkout session."),
+      );
+    }
+
+    const checkoutId = result?.data?.id?.toString();
+    const checkoutUrl = result?.data?.attributes?.checkout_url?.toString();
+    if (!checkoutId || !checkoutUrl) {
+      throw fastify.httpErrors.badGateway("PayMongo checkout response is missing checkout URL.");
+    }
+
+    return {
+      checkoutId,
+      checkoutUrl,
+      checkoutStatus: getCheckoutStatus(result),
+      payMongoPaymentIntentId: extractPayMongoPaymentIntentId(result),
+      raw: result,
+    };
+  };
+
+  const retrievePayMongoCheckout = async (checkoutId: string) => {
+    if (!payMongoEnabled) {
+      throw fastify.httpErrors.serviceUnavailable(
+        "PayMongo is not configured. Set PAYMONGO_SECRET_KEY in the API environment.",
+      );
+    }
+
+    const response = await fetch(`${payMongoApiBaseUrl}/checkout_sessions/${checkoutId}`, {
+      method: "GET",
+      headers: {
+        Authorization: payMongoAuthHeader,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = (await response.json().catch(() => null)) as PayMongoCheckoutResponse | null;
+    if (!response.ok) {
+      throw fastify.httpErrors.badGateway(
+        parsePayMongoError(result, "Failed to retrieve PayMongo checkout status."),
+      );
+    }
+
+    return {
+      checkoutStatus: getCheckoutStatus(result),
+      payMongoPaymentIntentId: extractPayMongoPaymentIntentId(result),
+      paid: isCheckoutPaid(result),
+      raw: result,
+    };
+  };
 
   const assertNoPaymentText = (value: string | undefined) => {
     if (!value) {
@@ -532,6 +716,10 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
           status,
           paid_at,
           canceled_at,
+          paymongo_checkout_id,
+          paymongo_checkout_url,
+          paymongo_last_status,
+          paymongo_payment_intent_id,
           created_at,
           updated_at
         from payment_intents
@@ -563,6 +751,23 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.forbidden("Only the listing seller can create payment requests");
       }
 
+      const payerProfileResult = await pool.query(
+        `
+        select
+          u.email,
+          coalesce(p.full_name, 'Buyer') as full_name,
+          coalesce(p.phone, '') as phone
+        from users u
+        left join profiles p on p.user_id = u.id
+        where u.id = $1
+      `,
+        [convo.buyer_user_id],
+      );
+      if (!payerProfileResult.rowCount) {
+        throw fastify.httpErrors.notFound("Buyer account not found");
+      }
+      const payer = payerProfileResult.rows[0];
+
       const inserted = await pool.query(
         `
         insert into payment_intents (
@@ -588,6 +793,10 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
           status,
           paid_at,
           canceled_at,
+          paymongo_checkout_id,
+          paymongo_checkout_url,
+          paymongo_last_status,
+          paymongo_payment_intent_id,
           created_at,
           updated_at
       `,
@@ -602,7 +811,65 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
         ],
       );
 
-      return reply.code(201).send(inserted.rows[0]);
+      const paymentIntent = inserted.rows[0];
+
+      try {
+        const checkout = await createPayMongoCheckout({
+          paymentIntentId: paymentIntent.id,
+          conversationId: convo.id,
+          listingId: convo.listing_id,
+          amountPhp: Number(paymentIntent.amount_php),
+          note: paymentIntent.note,
+          payerName: String(payer.full_name ?? "Buyer"),
+          payerEmail: String(payer.email),
+          payerPhone: String(payer.phone ?? ""),
+        });
+
+        const updated = await pool.query(
+          `
+          update payment_intents
+          set
+            paymongo_checkout_id = $1,
+            paymongo_checkout_url = $2,
+            paymongo_last_status = $3,
+            paymongo_payment_intent_id = $4,
+            paymongo_raw = $5::jsonb,
+            updated_at = now()
+          where id = $6
+          returning
+            id,
+            conversation_id,
+            listing_id,
+            requested_by_user_id,
+            payer_user_id,
+            payee_user_id,
+            amount_php,
+            note,
+            status,
+            paid_at,
+            canceled_at,
+            paymongo_checkout_id,
+            paymongo_checkout_url,
+            paymongo_last_status,
+            paymongo_payment_intent_id,
+            created_at,
+            updated_at
+        `,
+          [
+            checkout.checkoutId,
+            checkout.checkoutUrl,
+            checkout.checkoutStatus,
+            checkout.payMongoPaymentIntentId,
+            JSON.stringify(checkout.raw),
+            paymentIntent.id,
+          ],
+        );
+
+        return reply.code(201).send(updated.rows[0]);
+      } catch (error) {
+        await pool.query("delete from payment_intents where id = $1", [paymentIntent.id]);
+        throw error;
+      }
     },
   );
 
@@ -623,7 +890,9 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
           listing_id,
           payer_user_id,
           payee_user_id,
-          status
+          status,
+          paymongo_checkout_id,
+          paymongo_checkout_url
         from payment_intents
         where id = $1
       `,
@@ -641,15 +910,67 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest("Only pending payment intents can be updated");
       }
 
-      if (body.action === "pay") {
+      if (body.action === "pay" || body.action === "refresh") {
         if (request.user.role !== "admin" && request.user.sub !== row.payer_user_id) {
           throw fastify.httpErrors.forbidden("Only the payer can complete this payment");
+        }
+
+        if (!row.paymongo_checkout_id) {
+          throw fastify.httpErrors.badRequest("Missing PayMongo checkout session for this payment intent.");
+        }
+
+        const checkout = await retrievePayMongoCheckout(row.paymongo_checkout_id);
+
+        if (!checkout.paid) {
+          const pending = await pool.query(
+            `
+            update payment_intents
+            set
+              paymongo_last_status = $1,
+              paymongo_payment_intent_id = coalesce($2, paymongo_payment_intent_id),
+              paymongo_raw = $3::jsonb,
+              updated_at = now()
+            where id = $4
+            returning
+              id,
+              conversation_id,
+              listing_id,
+              requested_by_user_id,
+              payer_user_id,
+              payee_user_id,
+              amount_php,
+              note,
+              status,
+              paid_at,
+              canceled_at,
+              paymongo_checkout_id,
+              paymongo_checkout_url,
+              paymongo_last_status,
+              paymongo_payment_intent_id,
+              created_at,
+              updated_at
+          `,
+            [
+              checkout.checkoutStatus,
+              checkout.payMongoPaymentIntentId,
+              JSON.stringify(checkout.raw),
+              params.id,
+            ],
+          );
+
+          return pending.rows[0];
         }
 
         const updated = await pool.query(
           `
           update payment_intents
-          set status = 'paid', paid_at = now(), updated_at = now()
+          set
+            status = 'paid',
+            paid_at = now(),
+            paymongo_last_status = $2,
+            paymongo_payment_intent_id = coalesce($3, paymongo_payment_intent_id),
+            paymongo_raw = $4::jsonb,
+            updated_at = now()
           where id = $1
           returning
             id,
@@ -663,10 +984,19 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
             status,
             paid_at,
             canceled_at,
+            paymongo_checkout_id,
+            paymongo_checkout_url,
+            paymongo_last_status,
+            paymongo_payment_intent_id,
             created_at,
             updated_at
         `,
-          [params.id],
+          [
+            params.id,
+            checkout.checkoutStatus,
+            checkout.payMongoPaymentIntentId,
+            JSON.stringify(checkout.raw),
+          ],
         );
 
         return updated.rows[0];
@@ -697,6 +1027,10 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
           status,
           paid_at,
           canceled_at,
+          paymongo_checkout_id,
+          paymongo_checkout_url,
+          paymongo_last_status,
+          paymongo_payment_intent_id,
           created_at,
           updated_at
       `,

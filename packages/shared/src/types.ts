@@ -1,4 +1,4 @@
-export type UserRole = "buyer" | "seller" | "agent" | "admin";
+export type UserRole = "buyer" | "seller" | "agent" | "attorney" | "admin";
 
 export type ListingStatus =
   | "draft"
@@ -34,6 +34,9 @@ export interface ListingFinancialInput {
   remainingBalancePhp: number;
   monthlyAmortizationPhp: number;
   cashOutPricePhp: number;
+  remainingAmortizationMonths: number;
+  availableInPagIbig: boolean;
+  availableInHouseLoan: boolean;
 }
 
 export interface ListingFinancialComputed {
@@ -56,14 +59,20 @@ export interface CreateListingRequest {
   transferStatus?: ListingTransferStatus;
   isAuctionEnabled?: boolean;
   auctionBiddingDays?: number;
+  documentAssistance?: {
+    requested: boolean;
+    notes?: string | null;
+  };
   photoUrls?: string[];
   sellerAgreement: {
     accepted: boolean;
     signedName: string;
+    attorneySignedName: string;
     commissionRatePct: number;
     leadValidityMonths: number;
     paymentDueDays: number;
     signatureMethod: "typed_name_checkbox";
+    attorneySignatureMethod: "typed_name_checkbox";
   };
 }
 

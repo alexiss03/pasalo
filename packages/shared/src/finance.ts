@@ -11,12 +11,27 @@ export function computeListingFinancials(input: ListingFinancialInput): ListingF
 
 export function validateListingFinancials(input: ListingFinancialInput): string[] {
   const errors: string[] = [];
-  const keys = Object.entries(input) as Array<[keyof ListingFinancialInput, number]>;
+  const numericFields: Array<[keyof ListingFinancialInput, number]> = [
+    ["originalPricePhp", input.originalPricePhp],
+    ["equityPaidPhp", input.equityPaidPhp],
+    ["remainingBalancePhp", input.remainingBalancePhp],
+    ["monthlyAmortizationPhp", input.monthlyAmortizationPhp],
+    ["cashOutPricePhp", input.cashOutPricePhp],
+    ["remainingAmortizationMonths", input.remainingAmortizationMonths],
+  ];
 
-  for (const [key, value] of keys) {
+  for (const [key, value] of numericFields) {
     if (value < 0) {
       errors.push(`${key} cannot be negative`);
     }
+  }
+
+  if (!Number.isInteger(input.remainingAmortizationMonths)) {
+    errors.push("remainingAmortizationMonths must be a whole number");
+  }
+
+  if (input.remainingBalancePhp > 0 && input.remainingAmortizationMonths < 1) {
+    errors.push("remainingAmortizationMonths must be at least 1 when remainingBalancePhp is greater than 0");
   }
 
   const expectedOriginal = input.equityPaidPhp + input.remainingBalancePhp;

@@ -1,9 +1,124 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { computeListingFinancials, validateListingFinancials } from "@pasalo/shared";
 import { apiFetch } from "../../lib/api";
 import { getAuthToken } from "../../lib/auth";
+
+type VerificationBatchResponse = {
+  summary: {
+    overallStatus: "pass" | "review" | "fail";
+    passed: number;
+    needsReview: number;
+    failed: number;
+  };
+};
+
+type UploadedPhoto = {
+  id: string;
+  fileName: string;
+  dataUrl: string;
+};
+
+type UploadedDocMeta = {
+  fileName: string;
+  storageKey: string;
+};
+
+type DevelopersCatalogResponse = {
+  items: Array<{
+    name: string;
+  }>;
+};
+
+type PublishType = "normal" | "premium_top";
+const DEFAULT_COMMISSION_RATE_PCT = 3;
+const DEFAULT_LEAD_VALIDITY_MONTHS = 12;
+const DEFAULT_PAYMENT_DUE_DAYS = 7;
+
+type PublishListingResponse = {
+  status: "pending_review";
+  publishType: PublishType;
+  publishFeePhp: number;
+  placement: "normal" | "top";
+};
+
+const publishPlanOptions: Array<{
+  type: PublishType;
+  label: string;
+  description: string;
+  pricePhp: number;
+}> = [
+  {
+    type: "normal",
+    label: "Publish as Normal",
+    description: "Standard queue placement",
+    pricePhp: 1000,
+  },
+  {
+    type: "premium_top",
+    label: "Publish as Premium",
+    description: "Top placement in listing feed",
+    pricePhp: 5000,
+  },
+];
+
+const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024;
+
+const defaultDeveloperOptions = [
+  "SM Development Corporation",
+  "Ayala Land",
+  "Camella Homes",
+  "DMCI Homes",
+  "Megaworld",
+  "Filinvest Land",
+  "Robinsons Land",
+  "Vista Land",
+  "Federal Land",
+  "Rockwell Land",
+  "AboitizLand",
+  "Ortigas Land",
+  "Alveo Land",
+  "Avida Land",
+  "Amaia Land",
+  "Bellavita Land",
+  "Empire East Land Holdings",
+  "Anchor Land",
+  "Shang Properties",
+  "Century Properties",
+  "Eton Properties Philippines",
+  "Landco Pacific Corporation",
+  "Arthaland",
+  "Greenfield Development Corporation",
+  "Sta. Lucia Land",
+  "Cebu Landmasters",
+  "Damosa Land",
+  "AppleOne Properties",
+  "Suntrust Properties",
+  "Pueblo de Oro Development Corporation",
+  "Johndorf Ventures Corporation",
+  "NorthPine Land",
+  "Property Company of Friends (Pro-Friends)",
+  "Phirst Park Homes",
+  "Ovialand",
+  "Hausland Development Corporation",
+  "PrimaryHomes",
+  "Grand Land",
+  "Paramount Property Ventures",
+  "P.A. Properties Hankyu Hanshin",
+  "Xavier Estates",
+  "Crown Asia",
+  "Brittany Corporation",
+  "Vista Residences",
+  "Camella Manors",
+  "Cityland",
+  "Primex Realty Corporation",
+  "Torre Lorenzo Development Corporation",
+  "Phinma Properties",
+  "Wee Community Developers",
+  "New San Jose Builders",
+  "8990 Holdings",
+];
 
 function formatPhp(value: number): string {
   return new Intl.NumberFormat("en-PH", {
@@ -11,6 +126,15 @@ function formatPhp(value: number): string {
     currency: "PHP",
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function formatStatusLabel(value: "pass" | "review" | "fail"): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function buildUploadedFileKey(fileName: string): string {
+  const safeName = fileName.trim().replace(/\s+/g, "_");
+  return `https://uploads.pasalo.local/${encodeURIComponent(safeName)}`;
 }
 
 export default function CreateListingPage() {
@@ -21,85 +145,399 @@ export default function CreateListingPage() {
   const [developerName, setDeveloperName] = useState("");
   const [locationCity, setLocationCity] = useState("");
   const [locationProvince, setLocationProvince] = useState("");
+  const [developerOptions, setDeveloperOptions] = useState<string[]>(defaultDeveloperOptions);
   const [floorAreaSqm, setFloorAreaSqm] = useState(28);
   const [unitNumber, setUnitNumber] = useState("");
   const [turnoverDate, setTurnoverDate] = useState("");
 
-  const [originalPricePhp, setOriginalPricePhp] = useState(3000000);
-  const [equityPaidPhp, setEquityPaidPhp] = useState(350000);
-  const [remainingBalancePhp, setRemainingBalancePhp] = useState(2650000);
-  const [monthlyAmortizationPhp, setMonthlyAmortizationPhp] = useState(18000);
-  const [cashOutPricePhp, setCashOutPricePhp] = useState(250000);
+  const [originalPricePhpInput, setOriginalPricePhpInput] = useState("");
+  const [equityPaidPhpInput, setEquityPaidPhpInput] = useState("");
+  const [remainingBalancePhpInput, setRemainingBalancePhpInput] = useState("");
+  const [monthlyAmortizationPhpInput, setMonthlyAmortizationPhpInput] = useState("");
+  const [cashOutPricePhpInput, setCashOutPricePhpInput] = useState("");
+  const [remainingAmortizationMonthsInput, setRemainingAmortizationMonthsInput] = useState("");
+  const [availableInPagIbig, setAvailableInPagIbig] = useState(false);
+  const [availableInHouseLoan, setAvailableInHouseLoan] = useState(false);
+  const [documentAssistanceRequested, setDocumentAssistanceRequested] = useState(false);
+  const [documentAssistanceNotes, setDocumentAssistanceNotes] = useState("");
 
   const [isAuctionEnabled, setIsAuctionEnabled] = useState(false);
   const [auctionBiddingDays, setAuctionBiddingDays] = useState(7);
-  const [photoUrls, setPhotoUrls] = useState<string[]>(["", "", ""]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
+  const [idDocFileKey, setIdDocFileKey] = useState("");
+  const [transferDocumentFileKey, setTransferDocumentFileKey] = useState("");
+  const [titleDeclarationFileKey, setTitleDeclarationFileKey] = useState("");
+  const [authorityDocumentFileKey, setAuthorityDocumentFileKey] = useState("");
+  const [idDocMeta, setIdDocMeta] = useState<UploadedDocMeta | null>(null);
+  const [transferDocMeta, setTransferDocMeta] = useState<UploadedDocMeta | null>(null);
+  const [titleDocMeta, setTitleDocMeta] = useState<UploadedDocMeta | null>(null);
+  const [authorityDocMeta, setAuthorityDocMeta] = useState<UploadedDocMeta | null>(null);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [agreementSignedName, setAgreementSignedName] = useState("");
-  const [commissionRatePct, setCommissionRatePct] = useState(3);
-  const [leadValidityMonths, setLeadValidityMonths] = useState(12);
-  const [paymentDueDays, setPaymentDueDays] = useState(7);
+  const [attorneySignedName, setAttorneySignedName] = useState("");
+  const [signatureDataUrl, setSignatureDataUrl] = useState("");
+  const [attorneySignatureDataUrl, setAttorneySignatureDataUrl] = useState("");
+  const [signaturePadOpen, setSignaturePadOpen] = useState(false);
+  const [signaturePadTarget, setSignaturePadTarget] = useState<"seller" | "attorney">("seller");
+  const [signatureHasStroke, setSignatureHasStroke] = useState(false);
+  const [publishType, setPublishType] = useState<PublishType>("normal");
+  const [submitAction, setSubmitAction] = useState<"draft" | "publish" | null>(null);
 
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const signaturePadContainerRef = useRef<HTMLDivElement>(null);
+  const signatureDrawingRef = useRef(false);
 
-  const financials = useMemo(
-    () => ({
+  const parseNonNegativeNumber = (value: string): number | null => {
+    if (!value.trim()) {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const parseNonNegativeInteger = (value: string): number | null => {
+    if (!value.trim()) {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const financials = useMemo(() => {
+    const originalPricePhp = parseNonNegativeNumber(originalPricePhpInput);
+    const equityPaidPhp = parseNonNegativeNumber(equityPaidPhpInput);
+    const remainingBalancePhp = parseNonNegativeNumber(remainingBalancePhpInput);
+    const monthlyAmortizationPhp = parseNonNegativeNumber(monthlyAmortizationPhpInput);
+    const cashOutPricePhp = parseNonNegativeNumber(cashOutPricePhpInput);
+    const remainingAmortizationMonths = parseNonNegativeInteger(remainingAmortizationMonthsInput);
+
+    if (
+      originalPricePhp === null ||
+      equityPaidPhp === null ||
+      remainingBalancePhp === null ||
+      monthlyAmortizationPhp === null ||
+      cashOutPricePhp === null ||
+      remainingAmortizationMonths === null
+    ) {
+      return null;
+    }
+
+    return {
       originalPricePhp,
       equityPaidPhp,
       remainingBalancePhp,
       monthlyAmortizationPhp,
       cashOutPricePhp,
-    }),
-    [cashOutPricePhp, equityPaidPhp, monthlyAmortizationPhp, originalPricePhp, remainingBalancePhp],
+      remainingAmortizationMonths,
+      availableInPagIbig,
+      availableInHouseLoan,
+    };
+  }, [
+    availableInHouseLoan,
+    availableInPagIbig,
+    cashOutPricePhpInput,
+    equityPaidPhpInput,
+    monthlyAmortizationPhpInput,
+    originalPricePhpInput,
+    remainingAmortizationMonthsInput,
+    remainingBalancePhpInput,
+  ]);
+
+  const computed = useMemo(
+    () => (financials ? computeListingFinancials(financials) : null),
+    [financials],
+  );
+  const financialErrors = useMemo(
+    () => (financials ? validateListingFinancials(financials) : []),
+    [financials],
   );
 
-  const computed = useMemo(() => computeListingFinancials(financials), [financials]);
-  const financialErrors = useMemo(() => validateListingFinancials(financials), [financials]);
+  useEffect(() => {
+    let disposed = false;
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+    const loadDevelopers = async () => {
+      try {
+        const result = await apiFetch<DevelopersCatalogResponse>("/developers?activeOnly=true");
+        const names = result.items
+          .map((item) => item.name.trim())
+          .filter(Boolean);
+        if (!disposed && names.length) {
+          setDeveloperOptions(Array.from(new Set(names)));
+        }
+      } catch {
+        // Keep fallback list when catalog API is unavailable.
+      }
+    };
+
+    void loadDevelopers();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!signaturePadOpen) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const canvas = signatureCanvasRef.current;
+      const container = signaturePadContainerRef.current;
+      if (!canvas || !container) {
+        return;
+      }
+
+      const width = Math.max(280, container.clientWidth);
+      const height = 180;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#16191f";
+
+      const activeSignatureDataUrl =
+        signaturePadTarget === "seller" ? signatureDataUrl : attorneySignatureDataUrl;
+
+      if (activeSignatureDataUrl) {
+        const image = new Image();
+        image.onload = () => {
+          ctx.drawImage(image, 0, 0, width, height);
+          setSignatureHasStroke(true);
+        };
+        image.src = activeSignatureDataUrl;
+      } else {
+        setSignatureHasStroke(false);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [attorneySignatureDataUrl, signatureDataUrl, signaturePadOpen, signaturePadTarget]);
+
+  const getSignaturePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
+
+  const startSignatureDraw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = signatureCanvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+
+    const { x, y } = getSignaturePoint(event);
+    signatureDrawingRef.current = true;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setSignatureHasStroke(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveSignatureDraw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!signatureDrawingRef.current) {
+      return;
+    }
+
+    const canvas = signatureCanvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+
+    const { x, y } = getSignaturePoint(event);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const endSignatureDraw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    signatureDrawingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // no-op
+    }
+  };
+
+  const saveSignaturePad = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    if (!signatureHasStroke) {
+      setError("Draw your signature before saving.");
+      return;
+    }
+
+    const dataUrl = canvas.toDataURL("image/png");
+    if (signaturePadTarget === "seller") {
+      setSignatureDataUrl(dataUrl);
+    } else {
+      setAttorneySignatureDataUrl(dataUrl);
+    }
+    setSignaturePadOpen(false);
+    setError(null);
+  };
+
+  const resetCreateListingForm = () => {
+    setTitle("");
+    setDescription("");
+    setPropertyType("condo");
+    setProjectName("");
+    setDeveloperName("");
+    setLocationCity("");
+    setLocationProvince("");
+    setFloorAreaSqm(28);
+    setUnitNumber("");
+    setTurnoverDate("");
+
+    setOriginalPricePhpInput("");
+    setEquityPaidPhpInput("");
+    setRemainingBalancePhpInput("");
+    setMonthlyAmortizationPhpInput("");
+    setCashOutPricePhpInput("");
+    setRemainingAmortizationMonthsInput("");
+    setAvailableInPagIbig(false);
+    setAvailableInHouseLoan(false);
+    setDocumentAssistanceRequested(false);
+    setDocumentAssistanceNotes("");
+
+    setIsAuctionEnabled(false);
+    setAuctionBiddingDays(7);
+    setUploadedPhotos([]);
+
+    setIdDocFileKey("");
+    setTransferDocumentFileKey("");
+    setTitleDeclarationFileKey("");
+    setAuthorityDocumentFileKey("");
+    setIdDocMeta(null);
+    setTransferDocMeta(null);
+    setTitleDocMeta(null);
+    setAuthorityDocMeta(null);
+
+    setAgreementAccepted(false);
+    setAgreementSignedName("");
+    setAttorneySignedName("");
+    setSignatureDataUrl("");
+    setAttorneySignatureDataUrl("");
+    setSignaturePadOpen(false);
+    setSignaturePadTarget("seller");
+    setSignatureHasStroke(false);
+    signatureDrawingRef.current = false;
+
+    setPublishType("normal");
+  };
+
+  const submit = async (mode: "draft" | "publish") => {
     setError(null);
     setSubmitStatus(null);
+    setSubmitAction(mode);
 
     const token = getAuthToken();
     if (!token) {
       setError("Login first to create a listing.");
+      setSubmitAction(null);
+      return;
+    }
+
+    if (!financials) {
+      setError("Complete all financial breakdown fields with valid values.");
+      setSubmitAction(null);
       return;
     }
 
     if (financialErrors.length) {
       setError(financialErrors.join("; "));
+      setSubmitAction(null);
       return;
     }
 
     if (isAuctionEnabled && auctionBiddingDays < 1) {
       setError("Set auction bidding days to at least 1 day.");
+      setSubmitAction(null);
+      return;
+    }
+    if (documentAssistanceRequested && documentAssistanceNotes.trim().length < 10) {
+      setError("Add at least 10 characters for document assistance notes.");
+      setSubmitAction(null);
       return;
     }
     if (!agreementAccepted) {
       setError("You must accept the Seller Listing Agreement.");
+      setSubmitAction(null);
       return;
     }
     if (!agreementSignedName.trim()) {
-      setError("Type your full name as digital signature.");
+      setError("Type seller full name as digital signature.");
+      setSubmitAction(null);
       return;
     }
-    if (commissionRatePct < 3 || commissionRatePct > 5) {
-      setError("Commission rate must be between 3% and 5%.");
+    if (!signatureDataUrl) {
+      setError("Add seller signature before submitting.");
+      setSubmitAction(null);
       return;
     }
-    if (leadValidityMonths < 6 || leadValidityMonths > 12) {
-      setError("Lead validity period must be between 6 and 12 months.");
+    if (!attorneySignedName.trim()) {
+      setError("Type attorney full name as digital signature.");
+      setSubmitAction(null);
       return;
     }
-    if (paymentDueDays < 1 || paymentDueDays > 30) {
-      setError("Commission payment due days must be between 1 and 30.");
+    if (!attorneySignatureDataUrl) {
+      setError("Add attorney signature before submitting.");
+      setSubmitAction(null);
+      return;
+    }
+    const selectedDeveloper = developerOptions.find(
+      (option) => option.toLowerCase() === developerName.trim().toLowerCase(),
+    );
+    if (!selectedDeveloper) {
+      setError("Select a developer from the searchable dropdown list.");
+      setSubmitAction(null);
       return;
     }
 
-    const cleanedPhotoUrls = photoUrls.map((url) => url.trim()).filter(Boolean);
+    const cleanedPhotoUrls = uploadedPhotos.map((photo) => photo.dataUrl).filter(Boolean);
+    const normalizedUnitNumber = unitNumber.trim();
+    const cleanedIdDocFileKey = idDocFileKey.trim();
+    const cleanedTransferDocumentFileKey = transferDocumentFileKey.trim();
+    const cleanedTitleDeclarationFileKey = titleDeclarationFileKey.trim();
+    const cleanedAuthorityDocumentFileKey = authorityDocumentFileKey.trim();
 
+    if (!cleanedIdDocFileKey || !cleanedTransferDocumentFileKey || !cleanedTitleDeclarationFileKey || !cleanedAuthorityDocumentFileKey) {
+      setError("Upload all required verification documents: Seller ID, Transfer Document, Title/Tax Declaration, and Authority Document.");
+      setSubmitAction(null);
+      return;
+    }
+
+    let createdListingId: string | null = null;
     try {
       const response = await apiFetch<{ listingId: string }>("/listings", {
         method: "POST",
@@ -109,58 +547,195 @@ export default function CreateListingPage() {
           description,
           propertyType,
           projectName,
-          developerName,
+          developerName: selectedDeveloper,
           locationCity,
           locationProvince,
           floorAreaSqm,
-          unitNumber: unitNumber || null,
+          ...(normalizedUnitNumber.length ? { unitNumber: normalizedUnitNumber } : {}),
           turnoverDate: turnoverDate || null,
           financials,
           isAuctionEnabled,
           auctionBiddingDays: isAuctionEnabled ? auctionBiddingDays : undefined,
+          documentAssistance: {
+            requested: documentAssistanceRequested,
+            notes: documentAssistanceRequested ? documentAssistanceNotes.trim() : null,
+          },
           photoUrls: cleanedPhotoUrls,
           sellerAgreement: {
             accepted: agreementAccepted,
             signedName: agreementSignedName.trim(),
-            commissionRatePct,
-            leadValidityMonths,
-            paymentDueDays,
+            attorneySignedName: attorneySignedName.trim(),
+            commissionRatePct: DEFAULT_COMMISSION_RATE_PCT,
+            leadValidityMonths: DEFAULT_LEAD_VALIDITY_MONTHS,
+            paymentDueDays: DEFAULT_PAYMENT_DUE_DAYS,
             signatureMethod: "typed_name_checkbox",
+            attorneySignatureMethod: "typed_name_checkbox",
           },
         },
       });
+      createdListingId = response.listingId;
 
-      setSubmitStatus(`Draft listing created: ${response.listingId}. Saved ${cleanedPhotoUrls.length} photo(s).`);
+      let aiSummaryText = "AI verification pending.";
+      let publishSummaryText = "";
+
+      try {
+        const aiResponse = await apiFetch<VerificationBatchResponse>("/me/verification-docs/ai-batch", {
+          method: "POST",
+          token,
+          body: {
+            listingId: response.listingId,
+            idFileKey: cleanedIdDocFileKey,
+            transferDocumentFileKey: cleanedTransferDocumentFileKey,
+            titleDeclarationFileKey: cleanedTitleDeclarationFileKey,
+            authorityDocumentFileKey: cleanedAuthorityDocumentFileKey,
+          },
+        });
+
+        aiSummaryText = `AI check: ${formatStatusLabel(aiResponse.summary.overallStatus)} (${aiResponse.summary.passed} pass, ${aiResponse.summary.needsReview} review, ${aiResponse.summary.failed} fail).`;
+      } catch (verificationErr) {
+        const message = verificationErr instanceof Error ? verificationErr.message : "Unable to submit verification docs";
+        aiSummaryText = `AI verification submission failed (${message}). You can retry verification from profile/admin.`;
+      }
+
+      if (mode === "publish") {
+        const publishResult = await apiFetch<PublishListingResponse>(`/listings/${response.listingId}/publish`, {
+          method: "POST",
+          token,
+          body: {
+            publishType,
+          },
+        });
+
+        const publishLabel = publishResult.publishType === "premium_top" ? "Premium (Top Placement)" : "Normal";
+        publishSummaryText = `Published as ${publishLabel} for ${formatPhp(publishResult.publishFeePhp)}. Status: ${publishResult.status}.`;
+      }
+
+      resetCreateListingForm();
+      setError(null);
+      setSubmitStatus(
+        mode === "publish"
+          ? `Listing submitted for publish review: ${response.listingId}. ${publishSummaryText} Saved ${cleanedPhotoUrls.length} photo(s). ${aiSummaryText}`
+          : `Draft listing created: ${response.listingId}. Saved ${cleanedPhotoUrls.length} photo(s). ${aiSummaryText}`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create listing");
+      const message = err instanceof Error ? err.message : "Failed to create listing";
+      if (createdListingId && mode === "publish") {
+        setError(`Draft created (${createdListingId}) but publish failed: ${message}`);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setSubmitAction(null);
     }
   };
 
-  const setPhotoAt = (index: number, value: string) => {
-    setPhotoUrls((prev) => prev.map((photo, i) => (i === index ? value : photo)));
-  };
-
-  const addPhotoField = () => {
-    setPhotoUrls((prev) => (prev.length >= 15 ? prev : [...prev, ""]));
-  };
-
-  const removePhotoField = (index: number) => {
-    setPhotoUrls((prev) => {
-      if (prev.length <= 1) {
-        return [""];
-      }
-      return prev.filter((_, i) => i !== index);
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.readAsDataURL(file);
     });
+
+  const handlePhotoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || !files.length) {
+      return;
+    }
+
+    const remainingSlots = Math.max(0, 15 - uploadedPhotos.length);
+    const toProcess = Array.from(files).slice(0, remainingSlots);
+
+    if (!remainingSlots) {
+      setError("Maximum of 15 photos allowed.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const next: UploadedPhoto[] = [];
+      const rejectedFiles: string[] = [];
+      for (const file of toProcess) {
+        if (!file.type.startsWith("image/")) {
+          rejectedFiles.push(`${file.name} (not an image)`);
+          continue;
+        }
+        if (file.size > MAX_PHOTO_SIZE_BYTES) {
+          rejectedFiles.push(`${file.name} (exceeds 5MB)`);
+          continue;
+        }
+        const dataUrl = await readFileAsDataUrl(file);
+        next.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          fileName: file.name,
+          dataUrl,
+        });
+      }
+
+      if (!next.length) {
+        if (rejectedFiles.length) {
+          setError(`No photos uploaded. Limit is 5MB per image. Rejected: ${rejectedFiles.join(", ")}`);
+        } else {
+          setError("Upload image files only.");
+        }
+        event.target.value = "";
+        return;
+      }
+
+      setUploadedPhotos((prev) => [...prev, ...next]);
+      if (rejectedFiles.length) {
+        setError(`Some files were skipped. Limit is 5MB per image. Rejected: ${rejectedFiles.join(", ")}`);
+      } else {
+        setError(null);
+      }
+    } catch (uploadErr) {
+      setError(uploadErr instanceof Error ? uploadErr.message : "Unable to upload photo.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const openPhotoPicker = () => {
+    photoInputRef.current?.click();
+  };
+
+  const removeUploadedPhoto = (id: string) => {
+    setUploadedPhotos((prev) => prev.filter((photo) => photo.id !== id));
+  };
+
+  const uploadVerificationDoc = (
+    event: ChangeEvent<HTMLInputElement>,
+    onMeta: (meta: UploadedDocMeta | null) => void,
+    onKey: (value: string) => void,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      onMeta(null);
+      onKey("");
+      return;
+    }
+
+    const meta = {
+      fileName: file.name,
+      storageKey: buildUploadedFileKey(file.name),
+    };
+    onMeta(meta);
+    onKey(meta.storageKey);
+    setError(null);
+    event.target.value = "";
   };
 
   return (
     <section className="grid" style={{ gap: 18 }}>
       <h1 style={{ marginBottom: 0 }}>Create Pasalo Listing</h1>
-      <p className="small" style={{ marginTop: -8 }}>
-        Include photos, amount labels, and optional auction bidding window.
-      </p>
 
-      <form className="grid" onSubmit={submit}>
+      <form
+        className="grid"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          void submit("draft");
+        }}
+      >
         <div className="card grid grid-2">
           <div className="form-field">
             <label className="field-label">Listing Title</label>
@@ -181,7 +756,21 @@ export default function CreateListingPage() {
           </div>
           <div className="form-field">
             <label className="field-label">Developer</label>
-            <input value={developerName} onChange={(e) => setDeveloperName(e.target.value)} placeholder="Developer name" required />
+            <input
+              list="developer-options"
+              value={developerName}
+              onChange={(e) => setDeveloperName(e.target.value)}
+              placeholder="Search and select developer"
+              required
+            />
+            <datalist id="developer-options">
+              {developerOptions.map((developer) => (
+                <option key={developer} value={developer}>
+                  {developer}
+                </option>
+              ))}
+            </datalist>
+            <p className="field-note">Search from the active PH developer catalog.</p>
           </div>
 
           <div className="form-field">
@@ -200,6 +789,7 @@ export default function CreateListingPage() {
           <div className="form-field">
             <label className="field-label">Unit Number (Optional)</label>
             <input value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)} placeholder="Unit number" />
+            <p className="field-note">Leave blank if the property has no assigned unit number.</p>
           </div>
 
           <div className="form-field">
@@ -207,6 +797,69 @@ export default function CreateListingPage() {
             <input value={turnoverDate} onChange={(e) => setTurnoverDate(e.target.value)} type="date" />
           </div>
 
+          <div className="form-field">
+            <label className="field-label">Seller Signature (Typed Full Name)</label>
+            <button
+              className="signature-trigger"
+              onClick={() => {
+                setSignaturePadTarget("seller");
+                setSignaturePadOpen(true);
+              }}
+              type="button"
+            >
+              {signatureDataUrl ? (
+                <img alt="Seller signature preview" className="signature-trigger-preview" src={signatureDataUrl} />
+              ) : (
+                <span className="small">Tap to open signature pad</span>
+              )}
+            </button>
+            <input
+              value={agreementSignedName}
+              onChange={(e) => setAgreementSignedName(e.target.value)}
+              placeholder="Type your full legal name"
+            />
+            <p className="field-note">Tap the signature box to draw your signature, then type your full name.</p>
+          </div>
+
+          <div className="form-field">
+            <label className="field-label">Attorney Signature (Typed Full Name)</label>
+            <button
+              className="signature-trigger"
+              onClick={() => {
+                setSignaturePadTarget("attorney");
+                setSignaturePadOpen(true);
+              }}
+              type="button"
+            >
+              {attorneySignatureDataUrl ? (
+                <img alt="Attorney signature preview" className="signature-trigger-preview" src={attorneySignatureDataUrl} />
+              ) : (
+                <span className="small">Tap to open signature pad</span>
+              )}
+            </button>
+            <input
+              value={attorneySignedName}
+              onChange={(e) => setAttorneySignedName(e.target.value)}
+              placeholder="Type attorney full legal name"
+            />
+            <p className="field-note">Capture the attorney signature and typed full name for legal review.</p>
+          </div>
+
+          <div className="form-field" style={{ gridColumn: "1 / -1" }}>
+            <label className="field-label">Property Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Property details, inclusions, and transfer notes"
+              minLength={20}
+              required
+              rows={4}
+            />
+          </div>
+        </div>
+
+        <div className="card grid">
+          <h3 style={{ margin: 0 }}>Auction</h3>
           <div className="form-field">
             <label className="inline-check">
               <input checked={isAuctionEnabled} onChange={(e) => setIsAuctionEnabled(e.target.checked)} type="checkbox" />
@@ -228,40 +881,44 @@ export default function CreateListingPage() {
               </>
             )}
           </div>
-
-          <div className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <label className="field-label">Property Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Property details, inclusions, and transfer notes"
-              minLength={20}
-              required
-              rows={4}
-            />
-          </div>
         </div>
 
         <div className="card grid">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
             <h3 style={{ margin: 0 }}>Photos</h3>
-            <button className="ghost-button" onClick={addPhotoField} type="button">
+            <button className="ghost-button" onClick={openPhotoPicker} type="button">
               Add photo
             </button>
+            <input
+              accept="image/*"
+              multiple
+              onChange={handlePhotoUpload}
+              ref={photoInputRef}
+              style={{ display: "none" }}
+              type="file"
+            />
           </div>
           <p className="small" style={{ margin: 0 }}>
-            Add direct image URLs. First photo is set as primary.
+            Upload image files up to 5MB each. First uploaded photo is set as primary.
           </p>
           <div className="grid">
-            {photoUrls.map((url, index) => (
-              <div className="field-row" key={`photo-${index}`}>
-                <input
-                  value={url}
-                  onChange={(e) => setPhotoAt(index, e.target.value)}
-                  placeholder={`Photo URL ${index + 1}`}
-                  type="url"
-                />
-                <button className="ghost-button" onClick={() => removePhotoField(index)} type="button">
+            {!uploadedPhotos.length && <p className="small" style={{ margin: 0 }}>No photo uploaded yet.</p>}
+            {uploadedPhotos.map((photo, index) => (
+              <div className="field-row" key={photo.id} style={{ alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <img
+                    alt={photo.fileName}
+                    src={photo.dataUrl}
+                    style={{ width: 64, height: 46, objectFit: "cover", border: "1px solid #d7dbe1", flexShrink: 0 }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <p className="small" style={{ margin: 0, fontWeight: 600, color: "#222733" }}>
+                      {index === 0 ? "Primary photo" : `Photo ${index + 1}`}
+                    </p>
+                    <p className="small" style={{ margin: 0, overflowWrap: "anywhere" }}>{photo.fileName}</p>
+                  </div>
+                </div>
+                <button className="ghost-button" onClick={() => removeUploadedPhoto(photo.id)} type="button">
                   Remove
                 </button>
               </div>
@@ -270,14 +927,129 @@ export default function CreateListingPage() {
         </div>
 
         <div className="card grid grid-2">
+          <div style={{ gridColumn: "1 / -1" }}>
+            <h3 style={{ margin: 0 }}>AI Document Verification</h3>
+            <p className="small" style={{ marginTop: 6 }}>
+              Upload all required documents. Every listing is screened by AI before review.
+            </p>
+          </div>
+
+          <div className="form-field">
+            <label className="field-label">Seller Valid ID</label>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => uploadVerificationDoc(e, setIdDocMeta, setIdDocFileKey)}
+            />
+            <p className="field-note">
+              {idDocMeta ? `Uploaded: ${idDocMeta.fileName}` : "No file uploaded yet."}
+            </p>
+          </div>
+
+          <div className="form-field">
+            <label className="field-label">Transfer Document</label>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => uploadVerificationDoc(e, setTransferDocMeta, setTransferDocumentFileKey)}
+            />
+            <p className="field-note">
+              {transferDocMeta ? `Uploaded: ${transferDocMeta.fileName}` : "No file uploaded yet."}
+            </p>
+          </div>
+
+          <div className="form-field">
+            <label className="field-label">Title / Tax Declaration</label>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => uploadVerificationDoc(e, setTitleDocMeta, setTitleDeclarationFileKey)}
+            />
+            <p className="field-note">
+              {titleDocMeta ? `Uploaded: ${titleDocMeta.fileName}` : "No file uploaded yet."}
+            </p>
+          </div>
+
+          <div className="form-field">
+            <label className="field-label">Authority Document</label>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => uploadVerificationDoc(e, setAuthorityDocMeta, setAuthorityDocumentFileKey)}
+            />
+            <p className="field-note">
+              {authorityDocMeta
+                ? `Uploaded: ${authorityDocMeta.fileName}`
+                : "Required for authentication checks (SPA/board resolution/authorization file)."}
+            </p>
+          </div>
+        </div>
+
+        <div className="card grid">
+          <h3 style={{ margin: 0 }}>Document Processing Assistance</h3>
+          <p className="small" style={{ marginTop: 6, marginBottom: 0 }}>
+            Request platform help for document collection, review sequencing, and transfer packet prep.
+          </p>
+          <label className="inline-check">
+            <input
+              checked={documentAssistanceRequested}
+              onChange={(event) => setDocumentAssistanceRequested(event.target.checked)}
+              type="checkbox"
+            />
+            Request document processing assistance
+          </label>
+          {documentAssistanceRequested && (
+            <div className="form-field">
+              <label className="field-label">Processing Notes</label>
+              <textarea
+                minLength={10}
+                onChange={(event) => setDocumentAssistanceNotes(event.target.value)}
+                placeholder="Share current blockers, missing documents, and preferred timeline."
+                required
+                rows={3}
+                value={documentAssistanceNotes}
+              />
+              <p className="field-note">Minimum 10 characters.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="card grid grid-2">
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <h3 style={{ margin: 0 }}>Price</h3>
+            <strong>Total cost to buyer: {computed ? formatPhp(computed.estimatedTotalCostPhp) : "—"}</strong>
+          </div>
+          <p className="small" style={{ gridColumn: "1 / -1", margin: 0 }}>
+            Computed as cash out + remaining balance.
+          </p>
+          {!financials && (
+            <p className="small" style={{ gridColumn: "1 / -1", margin: 0 }}>
+              Fill all financial fields to compute total cost.
+            </p>
+          )}
+          {financialErrors.length > 0 && (
+            <p className="small" style={{ gridColumn: "1 / -1", margin: 0 }}>
+              {financialErrors.join("; ")}
+            </p>
+          )}
+
           <div className="form-field">
             <label className="field-label">Original Price (PHP)</label>
-            <input type="number" min={0} value={originalPricePhp} onChange={(e) => setOriginalPricePhp(Number(e.target.value))} />
+            <input type="number" min={0} required value={originalPricePhpInput} onChange={(e) => setOriginalPricePhpInput(e.target.value)} />
             <p className="field-note">Developer contract price of the property.</p>
           </div>
           <div className="form-field">
             <label className="field-label">Equity Already Paid (PHP)</label>
-            <input type="number" min={0} value={equityPaidPhp} onChange={(e) => setEquityPaidPhp(Number(e.target.value))} />
+            <input type="number" min={0} required value={equityPaidPhpInput} onChange={(e) => setEquityPaidPhpInput(e.target.value)} />
             <p className="field-note">Total paid equity from current owner.</p>
           </div>
           <div className="form-field">
@@ -285,8 +1057,9 @@ export default function CreateListingPage() {
             <input
               type="number"
               min={0}
-              value={remainingBalancePhp}
-              onChange={(e) => setRemainingBalancePhp(Number(e.target.value))}
+              required
+              value={remainingBalancePhpInput}
+              onChange={(e) => setRemainingBalancePhpInput(e.target.value)}
             />
             <p className="field-note">Outstanding balance buyer will continue paying.</p>
           </div>
@@ -295,21 +1068,46 @@ export default function CreateListingPage() {
             <input
               type="number"
               min={0}
-              value={monthlyAmortizationPhp}
-              onChange={(e) => setMonthlyAmortizationPhp(Number(e.target.value))}
+              required
+              value={monthlyAmortizationPhpInput}
+              onChange={(e) => setMonthlyAmortizationPhpInput(e.target.value)}
             />
             <p className="field-note">Expected monthly payment after transfer.</p>
           </div>
           <div className="form-field">
             <label className="field-label">Cash Out Price (PHP)</label>
-            <input type="number" min={0} value={cashOutPricePhp} onChange={(e) => setCashOutPricePhp(Number(e.target.value))} />
+            <input type="number" min={0} required value={cashOutPricePhpInput} onChange={(e) => setCashOutPricePhpInput(e.target.value)} />
             <p className="field-note">One-time payment requested by seller.</p>
           </div>
-
-          <div className="card" style={{ padding: 12, alignSelf: "end" }}>
-            <strong>Total cost to buyer: {formatPhp(computed.estimatedTotalCostPhp)}</strong>
-            <p className="small">Computed as cash out + remaining balance.</p>
-            {financialErrors.length > 0 && <p className="error">{financialErrors.join("; ")}</p>}
+          <div className="form-field">
+            <label className="field-label">Remaining Amortization (Months)</label>
+            <input
+              type="number"
+              min={0}
+              required
+              value={remainingAmortizationMonthsInput}
+              onChange={(e) => setRemainingAmortizationMonthsInput(e.target.value)}
+            />
+            <p className="field-note">Remaining number of monthly amortization periods.</p>
+          </div>
+          <div className="form-field">
+            <label className="field-label">Loan Availability</label>
+            <label className="inline-check">
+              <input
+                checked={availableInPagIbig}
+                onChange={(e) => setAvailableInPagIbig(e.target.checked)}
+                type="checkbox"
+              />
+              Available in Pag-IBIG
+            </label>
+            <label className="inline-check">
+              <input
+                checked={availableInHouseLoan}
+                onChange={(e) => setAvailableInHouseLoan(e.target.checked)}
+                type="checkbox"
+              />
+              Available for in-house loan
+            </label>
           </div>
         </div>
 
@@ -330,13 +1128,13 @@ export default function CreateListingPage() {
             <p>
               <strong>Commission Protection Clause:</strong> The seller agrees that any buyer introduced through this
               platform shall be considered a platform lead. If the property is sold to such buyer within{" "}
-              {leadValidityMonths} months from introduction, the seller agrees to pay a commission of {commissionRatePct}%
-              of the final selling price.
+              {DEFAULT_LEAD_VALIDITY_MONTHS} months from introduction, the seller agrees to pay a commission of{" "}
+              {DEFAULT_COMMISSION_RATE_PCT}% of the final selling price.
             </p>
             <p>
               <strong>Payment Terms:</strong> If the seller enters into a sale, contract to sell, or any transfer agreement
               with a buyer introduced through the platform, the seller shall pay the agreed commission within{" "}
-              {paymentDueDays} days of the transaction.
+              {DEFAULT_PAYMENT_DUE_DAYS} days of the transaction.
             </p>
             <p>
               <strong>Lead Definition:</strong> A platform lead means any buyer account that first inquired, requested
@@ -351,49 +1149,22 @@ export default function CreateListingPage() {
           <div className="grid grid-2">
             <div className="form-field">
               <label className="field-label">Commission Rate (%)</label>
-              <input
-                type="number"
-                min={3}
-                max={5}
-                step={0.1}
-                value={commissionRatePct}
-                onChange={(e) => setCommissionRatePct(Number(e.target.value))}
-              />
-              <p className="field-note">Allowed range: 3% to 5%.</p>
+              <input type="text" value={`${DEFAULT_COMMISSION_RATE_PCT}%`} disabled />
+              <p className="field-note">Managed by admin. Allowed range: 3% to 5%.</p>
             </div>
 
             <div className="form-field">
               <label className="field-label">Lead Validity (Months)</label>
-              <input
-                type="number"
-                min={6}
-                max={12}
-                value={leadValidityMonths}
-                onChange={(e) => setLeadValidityMonths(Number(e.target.value))}
-              />
-              <p className="field-note">Usually 6 to 12 months from introduction date.</p>
+              <input type="text" value={`${DEFAULT_LEAD_VALIDITY_MONTHS}`} disabled />
+              <p className="field-note">
+                Managed by admin. This is how long a platform-introduced buyer remains your protected lead.
+              </p>
             </div>
 
             <div className="form-field">
               <label className="field-label">Commission Payment Due (Days)</label>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={paymentDueDays}
-                onChange={(e) => setPaymentDueDays(Number(e.target.value))}
-              />
-              <p className="field-note">Number of days after transaction completion.</p>
-            </div>
-
-            <div className="form-field">
-              <label className="field-label">Digital Signature (Typed Full Name)</label>
-              <input
-                value={agreementSignedName}
-                onChange={(e) => setAgreementSignedName(e.target.value)}
-                placeholder="Type your full legal name"
-              />
-              <p className="field-note">Signature method: checkbox + typed name.</p>
+              <input type="text" value={`${DEFAULT_PAYMENT_DUE_DAYS}`} disabled />
+              <p className="field-note">Managed by admin. Number of days after transaction completion.</p>
             </div>
           </div>
 
@@ -403,13 +1174,79 @@ export default function CreateListingPage() {
           </label>
         </div>
 
-        <button className="primary" type="submit">
-          Save Draft Listing
-        </button>
+        <div className="card grid">
+          <h3 style={{ marginTop: 0, marginBottom: 0 }}>Publish Options</h3>
+          <p className="small" style={{ margin: 0 }}>
+            Before publishing, choose listing placement.
+          </p>
+          <div className="grid" style={{ gap: 8 }}>
+            {publishPlanOptions.map((option) => (
+              <label className="inline-check" key={option.type}>
+                <input
+                  checked={publishType === option.type}
+                  name="publishType"
+                  onChange={() => setPublishType(option.type)}
+                  type="radio"
+                  value={option.type}
+                />
+                {option.label} ({formatPhp(option.pricePhp)}) - {option.description}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="ghost-button" disabled={submitAction !== null} type="submit">
+            {submitAction === "draft" ? "Saving Draft..." : "Save Draft"}
+          </button>
+          <button
+            className="primary"
+            disabled={submitAction !== null}
+            onClick={() => void submit("publish")}
+            type="button"
+          >
+            {submitAction === "publish" ? "Publishing..." : "Publish"}
+          </button>
+        </div>
       </form>
 
       {submitStatus && <p>{submitStatus}</p>}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="small">{error}</p>}
+
+      {signaturePadOpen && (
+        <div className="signature-modal-backdrop">
+          <div
+            className="signature-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${signaturePadTarget === "seller" ? "Seller" : "Attorney"} signature pad`}
+          >
+            <h3 style={{ margin: 0 }}>
+              Add {signaturePadTarget === "seller" ? "Seller" : "Attorney"} Signature
+            </h3>
+            <p className="small" style={{ margin: 0 }}>
+              Draw your signature using finger, stylus, or mouse.
+            </p>
+            <div className="signature-pad" ref={signaturePadContainerRef}>
+              <canvas
+                onPointerDown={startSignatureDraw}
+                onPointerMove={moveSignatureDraw}
+                onPointerUp={endSignatureDraw}
+                onPointerLeave={endSignatureDraw}
+                ref={signatureCanvasRef}
+              />
+            </div>
+            <div className="signature-modal-actions">
+              <button className="ghost-button" onClick={() => setSignaturePadOpen(false)} type="button">
+                Cancel
+              </button>
+              <button className="primary" onClick={saveSignaturePad} type="button">
+                Save signature
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

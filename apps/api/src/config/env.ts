@@ -48,7 +48,22 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default("*"),
+  PAYMONGO_API_BASE_URL: z.string().url().default("https://api.paymongo.com/v1"),
+  PAYMONGO_SECRET_KEY: z.string().optional(),
+  PAYMONGO_PUBLIC_BASE_URL: z.string().url().default("http://localhost:3001"),
+  PAYMONGO_PAYMENT_METHOD_TYPES: z.string().default("gcash,paymaya,card,grab_pay"),
+  DEFAULT_ADMIN_EMAIL: z.string().email().default("admin@pasalo.local"),
+  DEFAULT_ADMIN_PASSWORD: z.string().min(8).default("Admin12345!"),
+  ENABLE_DEFAULT_ADMIN: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return true;
+      }
+      return value.toLowerCase() === "true";
+    }),
 });
 
 export const env = envSchema.parse(process.env);

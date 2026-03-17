@@ -6,10 +6,12 @@ import { pool } from "../../db/pool";
 const sellerAgreementSchema = z.object({
   accepted: z.literal(true),
   signedName: z.string().min(2).max(150),
+  attorneySignedName: z.string().min(2).max(150),
   commissionRatePct: z.number().min(3).max(5),
   leadValidityMonths: z.number().int().min(6).max(12),
   paymentDueDays: z.number().int().min(1).max(30),
   signatureMethod: z.literal("typed_name_checkbox"),
+  attorneySignatureMethod: z.literal("typed_name_checkbox"),
 });
 
 const createListingSchema = z.object({
@@ -19,7 +21,17 @@ const createListingSchema = z.object({
   locationCity: z.string().min(2),
   locationProvince: z.string().min(2),
   floorAreaSqm: z.number().positive(),
-  unitNumber: z.string().optional().nullable(),
+  unitNumber: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((value) => {
+      if (value == null) {
+        return value;
+      }
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }),
   turnoverDate: z.string().optional().nullable(),
   title: z.string().min(10),
   description: z.string().min(20),
@@ -29,6 +41,9 @@ const createListingSchema = z.object({
     remainingBalancePhp: z.number().nonnegative(),
     monthlyAmortizationPhp: z.number().nonnegative(),
     cashOutPricePhp: z.number().nonnegative(),
+    remainingAmortizationMonths: z.number().int().nonnegative(),
+    availableInPagIbig: z.boolean(),
+    availableInHouseLoan: z.boolean(),
   }),
   transactionStatus: z.enum(["available", "auctioned", "in_deal", "buying_in_progress", "bought", "released"]).optional(),
   transferStatus: z
@@ -44,6 +59,12 @@ const createListingSchema = z.object({
     .optional(),
   isAuctionEnabled: z.boolean().optional(),
   auctionBiddingDays: z.number().int().min(1).max(90).optional(),
+  documentAssistance: z
+    .object({
+      requested: z.boolean(),
+      notes: z.string().max(2000).optional().nullable(),
+    })
+    .optional(),
   photoUrls: z.array(z.string().url()).max(15).optional(),
   sellerAgreement: sellerAgreementSchema,
 }) satisfies z.ZodType<CreateListingRequest>;
@@ -70,6 +91,9 @@ const listingMediaSchema = z.object({
   mediaType: z.enum(["image", "file"]),
   storageKey: z.string().min(3),
   isPrimary: z.boolean().optional(),
+});
+const publishListingSchema = z.object({
+  publishType: z.enum(["normal", "premium_top"]).default("normal"),
 });
 
 const listQuerySchema = z.object({
@@ -98,8 +122,17 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
   verifiedOnly: z.coerce.boolean().optional(),
 });
+const myListingsQuerySchema = z.object({
+  status: z.enum(["draft", "pending_review", "live", "paused", "expired", "rejected", "archived"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+});
+const developersQuerySchema = z.object({
+  activeOnly: z.coerce.boolean().default(true),
+});
 
 export const listingRoutes: FastifyPluginAsync = async (fastify) => {
+  const maxPhotoSizeBytes = 5 * 1024 * 1024;
   const openTransactionStatuses = new Set(["available", "released"]);
   const requiresActiveBuyerStatuses = new Set(["in_deal", "buying_in_progress", "bought"]);
 
@@ -121,6 +154,64 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     return false;
   };
 
+  const findActiveDeveloperName = async (name: string): Promise<string | null> => {
+    const result = await pool.query(
+      `
+      select name
+      from developers
+      where lower(name) = lower($1)
+        and is_active = true
+      limit 1
+    `,
+      [name.trim()],
+    );
+
+    if (!result.rowCount) {
+      return null;
+    }
+
+    return result.rows[0].name as string;
+  };
+
+  const estimateDataUrlSizeBytes = (value: string): number | null => {
+    if (!value.startsWith("data:")) {
+      return null;
+    }
+
+    const commaIndex = value.indexOf(",");
+    if (commaIndex < 0) {
+      return null;
+    }
+
+    const header = value.slice(0, commaIndex);
+    const payload = value.slice(commaIndex + 1);
+    if (header.includes(";base64")) {
+      const normalizedPayload = payload.replace(/\s+/g, "");
+      const padding = normalizedPayload.endsWith("==") ? 2 : normalizedPayload.endsWith("=") ? 1 : 0;
+      return Math.max(0, Math.floor((normalizedPayload.length * 3) / 4) - padding);
+    }
+
+    return Buffer.byteLength(decodeURIComponent(payload), "utf8");
+  };
+
+  fastify.get("/developers", async (request) => {
+    const query = developersQuerySchema.parse(request.query);
+    const whereSql = query.activeOnly ? "where is_active = true" : "";
+
+    const result = await pool.query(
+      `
+      select id, name, is_active, sort_order
+      from developers
+      ${whereSql}
+      order by sort_order asc, name asc
+    `,
+    );
+
+    return {
+      items: result.rows,
+    };
+  });
+
   fastify.post(
     "/listings",
     {
@@ -137,6 +228,10 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
       const body = parsed.data;
+      const canonicalDeveloperName = await findActiveDeveloperName(body.developerName);
+      if (!canonicalDeveloperName) {
+        throw fastify.httpErrors.badRequest("Selected developer is not in the active developer catalog.");
+      }
       const financialErrors = validateListingFinancials(body.financials);
       if (financialErrors.length) {
         throw fastify.httpErrors.badRequest(financialErrors.join("; "));
@@ -144,6 +239,12 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const computed = computeListingFinancials(body.financials);
       const sanitizedPhotoUrls = (body.photoUrls ?? []).map((url) => url.trim()).filter(Boolean);
+      for (const photoUrl of sanitizedPhotoUrls) {
+        const sizeBytes = estimateDataUrlSizeBytes(photoUrl);
+        if (sizeBytes !== null && sizeBytes > maxPhotoSizeBytes) {
+          throw fastify.httpErrors.badRequest("Each photo must be 5MB or smaller.");
+        }
+      }
       const shouldAuction = Boolean(body.isAuctionEnabled) || body.transactionStatus === "auctioned";
       const auctionBiddingDays = shouldAuction ? body.auctionBiddingDays : undefined;
       if (shouldAuction && !auctionBiddingDays) {
@@ -152,6 +253,14 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const transactionStatus = shouldAuction ? "auctioned" : (body.transactionStatus ?? "available");
       const transferStatus = body.transferStatus ?? "not_started";
+      const assistanceRequested = Boolean(body.documentAssistance?.requested);
+      const assistanceNotes = assistanceRequested ? (body.documentAssistance?.notes?.trim() ?? null) : null;
+      if (assistanceRequested && (!assistanceNotes || assistanceNotes.length < 10)) {
+        throw fastify.httpErrors.badRequest(
+          "Provide at least 10 characters of notes when requesting document processing assistance.",
+        );
+      }
+      const assistanceStatus = assistanceRequested ? "requested" : "not_requested";
       const auctionStartAt = shouldAuction ? new Date() : null;
       const auctionEndAt =
         shouldAuction && auctionBiddingDays
@@ -190,16 +299,21 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             auction_enabled,
             auction_start_at,
             auction_end_at,
-            auction_bidding_days
+            auction_bidding_days,
+            document_assistance_requested,
+            document_assistance_status,
+            document_assistance_notes,
+            document_assistance_requested_at,
+            document_assistance_updated_at
           )
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30,$12,$13,$14,$15,$16,$17)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
           returning *
         `,
           [
             request.user.sub,
             body.propertyType,
             body.projectName,
-            body.developerName,
+            canonicalDeveloperName,
             body.locationCity,
             body.locationProvince,
             body.floorAreaSqm,
@@ -213,6 +327,11 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             auctionStartAt,
             auctionEndAt,
             auctionBiddingDays ?? null,
+            assistanceRequested,
+            assistanceStatus,
+            assistanceNotes,
+            assistanceRequested ? new Date() : null,
+            new Date(),
           ],
         );
 
@@ -227,9 +346,12 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             remaining_balance_php,
             monthly_amortization_php,
             cash_out_price_php,
-            est_total_cost_php
+            est_total_cost_php,
+            remaining_amortization_months,
+            available_in_pagibig,
+            available_in_house_loan
           )
-          values ($1,$2,$3,$4,$5,$6,$7)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         `,
           [
             listing.id,
@@ -239,6 +361,9 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             body.financials.monthlyAmortizationPhp,
             body.financials.cashOutPricePhp,
             computed.estimatedTotalCostPhp,
+            body.financials.remainingAmortizationMonths,
+            body.financials.availableInPagIbig,
+            body.financials.availableInHouseLoan,
           ],
         );
 
@@ -274,10 +399,12 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             payment_clause,
             signed_name,
             signature_method,
+            attorney_signed_name,
+            attorney_signature_method,
             signer_ip,
             signer_user_agent
           )
-          values ($1,$2,'seller_listing_agreement_v1',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          values ($1,$2,'seller_listing_agreement_v1',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         `,
           [
             listing.id,
@@ -290,6 +417,8 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             paymentClause,
             sellerAgreement.signedName,
             sellerAgreement.signatureMethod,
+            sellerAgreement.attorneySignedName,
+            sellerAgreement.attorneySignatureMethod,
             signerIp,
             signerUserAgent,
           ],
@@ -423,6 +552,68 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.get(
+    "/me/listings",
+    {
+      preHandler: [fastify.authenticate],
+    },
+    async (request) => {
+      const query = myListingsQuerySchema.parse(request.query);
+      const whereClauses: string[] = ["l.owner_user_id = $1"];
+      const values: Array<string | number> = [request.user.sub];
+
+      if (query.status) {
+        values.push(query.status);
+        whereClauses.push(`l.status = $${values.length}`);
+      }
+
+      values.push(query.pageSize);
+      values.push((query.page - 1) * query.pageSize);
+
+      const result = await pool.query(
+        `
+        select
+          l.id,
+          l.title,
+          l.property_type,
+          l.project_name,
+          l.location_city,
+          l.location_province,
+          l.status,
+          l.transaction_status,
+          l.transfer_status,
+          l.readiness_score,
+          l.created_at,
+          l.is_featured,
+          (l.transaction_status = any(array['available'::listing_transaction_status, 'released'::listing_transaction_status])) as is_open_for_new_buyers,
+          lf.cash_out_price_php,
+          lf.monthly_amortization_php,
+          lm.preview_image_url
+        from listings l
+        join listing_financials lf on lf.listing_id = l.id
+        left join lateral (
+          select storage_key as preview_image_url
+          from listing_media
+          where listing_id = l.id and media_type = 'image'
+          order by is_primary desc, created_at asc
+          limit 1
+        ) lm on true
+        where ${whereClauses.join(" and ")}
+        order by l.created_at desc
+        limit $${values.length - 1}
+        offset $${values.length}
+      `,
+        values,
+      );
+
+      return {
+        page: query.page,
+        pageSize: query.pageSize,
+        items: result.rows,
+      };
+    },
+  );
+
   fastify.get("/listings/:id", async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
 
@@ -436,6 +627,9 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
         lf.monthly_amortization_php,
         lf.cash_out_price_php,
         lf.est_total_cost_php,
+        lf.remaining_amortization_months,
+        lf.available_in_pagibig,
+        lf.available_in_house_loan,
         (l.transaction_status = any(array['available'::listing_transaction_status, 'released'::listing_transaction_status])) as is_open_for_new_buyers,
         p.full_name as seller_name,
         p.verification_status,
@@ -540,6 +734,14 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
       const fields: string[] = [];
       const values: Array<string | number | null> = [];
       let index = 1;
+      let normalizedDeveloperName: string | undefined;
+      if (body.developerName !== undefined) {
+        const activeDeveloperName = await findActiveDeveloperName(body.developerName);
+        if (!activeDeveloperName) {
+          throw fastify.httpErrors.badRequest("Selected developer is not in the active developer catalog.");
+        }
+        normalizedDeveloperName = activeDeveloperName;
+      }
 
       const mapping: Record<string, string> = {
         propertyType: "property_type",
@@ -555,7 +757,10 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       for (const [apiField, dbField] of Object.entries(mapping)) {
-        const value = body[apiField as keyof typeof body];
+        const value =
+          apiField === "developerName"
+            ? normalizedDeveloperName
+            : body[apiField as keyof typeof body];
         if (value !== undefined) {
           fields.push(`${dbField} = $${index++}`);
           values.push((value as string | number | null) ?? null);
@@ -591,8 +796,11 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             monthly_amortization_php = $4,
             cash_out_price_php = $5,
             est_total_cost_php = $6,
+            remaining_amortization_months = $7,
+            available_in_pagibig = $8,
+            available_in_house_loan = $9,
             updated_at = now()
-          where listing_id = $7
+          where listing_id = $10
         `,
           [
             body.financials.originalPricePhp,
@@ -601,8 +809,43 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             body.financials.monthlyAmortizationPhp,
             body.financials.cashOutPricePhp,
             computed.estimatedTotalCostPhp,
+            body.financials.remainingAmortizationMonths,
+            body.financials.availableInPagIbig,
+            body.financials.availableInHouseLoan,
             params.id,
           ],
+        );
+      }
+
+      if (body.documentAssistance !== undefined) {
+        const assistanceRequested = Boolean(body.documentAssistance.requested);
+        const assistanceNotes = assistanceRequested ? (body.documentAssistance.notes?.trim() ?? null) : null;
+        if (assistanceRequested && (!assistanceNotes || assistanceNotes.length < 10)) {
+          throw fastify.httpErrors.badRequest(
+            "Provide at least 10 characters of notes when requesting document processing assistance.",
+          );
+        }
+
+        await pool.query(
+          `
+          update listings
+          set
+            document_assistance_requested = $1,
+            document_assistance_status = case
+              when $1 = false then 'not_requested'
+              when document_assistance_status = 'not_requested' then 'requested'
+              else document_assistance_status
+            end,
+            document_assistance_notes = $2,
+            document_assistance_requested_at = case
+              when $1 = true then coalesce(document_assistance_requested_at, now())
+              else null
+            end,
+            document_assistance_updated_at = now(),
+            updated_at = now()
+          where id = $3
+        `,
+          [assistanceRequested, assistanceNotes, params.id],
         );
       }
 
@@ -764,36 +1007,65 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = publishListingSchema.parse((request.body ?? {}) as Record<string, unknown>);
       fastify.authorizeRoles(request, ["seller", "agent", "admin"]);
 
-      const ownerResult = await pool.query("select owner_user_id from listings where id = $1", [params.id]);
+      const ownerResult = await pool.query("select owner_user_id, status from listings where id = $1", [params.id]);
       if (!ownerResult.rowCount) {
         throw fastify.httpErrors.notFound("Listing not found");
       }
 
-      const isOwner = ownerResult.rows[0].owner_user_id === request.user.sub;
+      const listing = ownerResult.rows[0];
+      const isOwner = listing.owner_user_id === request.user.sub;
       if (!isOwner && request.user.role !== "admin") {
         throw fastify.httpErrors.forbidden("Only listing owner can publish this listing");
       }
 
+      const publishFeePhp = body.publishType === "premium_top" ? 5000 : 1000;
+      const shouldFeatureAsTop = body.publishType === "premium_top";
+
       await pool.query(
         `
         update listings
-        set status = 'pending_review', updated_at = now()
+        set
+          status = 'pending_review',
+          is_featured = $2,
+          updated_at = now()
         where id = $1
       `,
-        [params.id],
+        [params.id, shouldFeatureAsTop],
       );
 
       await pool.query(
         `
         insert into listing_status_events (listing_id, from_status, to_status, changed_by)
-        values ($1, 'draft', 'pending_review', $2)
+        values ($1, $2, 'pending_review', $3)
       `,
-        [params.id, request.user.sub],
+        [params.id, listing.status, request.user.sub],
       );
 
-      return { status: "pending_review" };
+      await pool.query(
+        `
+        insert into audit_logs (actor_user_id, action, target_type, target_id, context)
+        values ($1, 'listing_publish_requested', 'listing', $2, $3::jsonb)
+      `,
+        [
+          request.user.sub,
+          params.id,
+          JSON.stringify({
+            publishType: body.publishType,
+            publishFeePhp,
+            placement: shouldFeatureAsTop ? "top" : "normal",
+          }),
+        ],
+      );
+
+      return {
+        status: "pending_review",
+        publishType: body.publishType,
+        publishFeePhp,
+        placement: shouldFeatureAsTop ? "top" : "normal",
+      };
     },
   );
 

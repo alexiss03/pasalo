@@ -9,7 +9,7 @@ import { getAuthToken } from "../../../lib/auth";
 
 type Me = {
   id: string;
-  role: "buyer" | "seller" | "agent" | "admin";
+  role: "buyer" | "seller" | "agent" | "attorney" | "admin";
 };
 
 type Conversation = {
@@ -39,6 +39,8 @@ type PaymentIntent = {
   status: "pending" | "paid" | "canceled";
   paid_at: string | null;
   canceled_at: string | null;
+  paymongo_checkout_url?: string | null;
+  paymongo_last_status?: string | null;
   created_at: string;
 };
 
@@ -65,6 +67,14 @@ function formatPhp(value: string): string {
     currency: "PHP",
     maximumFractionDigits: 2,
   }).format(Number(value));
+}
+
+function formatStatusLabel(value: string): string {
+  const clean = value.replaceAll("_", " ").trim();
+  if (!clean) {
+    return value;
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
 export default function ConversationPage() {
@@ -193,14 +203,14 @@ export default function ConversationPage() {
         },
       });
       setPaymentNote("");
-      setStatus("In-app payment request created.");
+      setStatus("Payment request created with PayMongo checkout.");
       await load(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create payment request");
     }
   };
 
-  const updatePaymentIntent = async (paymentIntentId: string, action: "pay" | "cancel") => {
+  const updatePaymentIntent = async (paymentIntentId: string, action: "refresh" | "cancel") => {
     const token = getAuthToken();
     if (!token) {
       setError("Login first to update payment requests.");
@@ -213,7 +223,7 @@ export default function ConversationPage() {
         token,
         body: { action },
       });
-      setStatus(action === "pay" ? "Payment completed in app." : "Payment request canceled.");
+      setStatus(action === "refresh" ? "Payment status refreshed from PayMongo." : "Payment request canceled.");
       await load(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update payment request");
@@ -235,7 +245,7 @@ export default function ConversationPage() {
           <p className="error" style={{ margin: 0 }}>{error}</p>
         </div>
         <Link className="nav-chip" href="/messages">
-          Back to Messages
+          Messages
         </Link>
       </section>
     );
@@ -246,12 +256,12 @@ export default function ConversationPage() {
       <div className="card">
         <p style={{ marginTop: 0 }}>
           <Link className="nav-chip" href="/messages">
-            Back to Messages
+            Messages
           </Link>
         </p>
         <h1 style={{ marginBottom: 8 }}>{conversation?.listing_title}</h1>
         <p className="small" style={{ margin: 0 }}>
-          Payment-related terms are blocked in chat. Use the in-app payment actions below.
+          Payment-related terms are blocked in chat. Use the PayMongo payment actions below.
         </p>
       </div>
 
@@ -293,7 +303,7 @@ export default function ConversationPage() {
       <div className="card grid" style={{ gap: 10 }}>
         <h2 style={{ marginTop: 0, marginBottom: 0 }}>In-App Payments</h2>
         <p className="small" style={{ margin: 0 }}>
-          Keep payments on platform for tracking and dispute support.
+          Keep payments on platform for tracking and dispute support via PayMongo.
         </p>
 
         {canCreatePaymentIntent && (
@@ -335,11 +345,16 @@ export default function ConversationPage() {
             return (
               <article className="card" key={intent.id} style={{ padding: 14 }}>
                 <p style={{ margin: 0 }}>
-                  <strong>{formatPhp(intent.amount_php)}</strong> • {intent.status}
+                  <strong>{formatPhp(intent.amount_php)}</strong> • {formatStatusLabel(intent.status)}
                 </p>
                 {intent.note && (
                   <p className="small" style={{ margin: "6px 0" }}>
                     {intent.note}
+                  </p>
+                )}
+                {intent.paymongo_last_status && (
+                  <p className="small" style={{ margin: "4px 0 0" }}>
+                    PayMongo: {formatStatusLabel(intent.paymongo_last_status)}
                   </p>
                 )}
                 <p className="small" style={{ margin: "4px 0 0" }}>
@@ -353,9 +368,20 @@ export default function ConversationPage() {
 
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   {canPay && (
-                    <button className="primary" onClick={() => updatePaymentIntent(intent.id, "pay")} type="button">
-                      Pay In App
-                    </button>
+                    <>
+                      {intent.paymongo_checkout_url && (
+                        <button
+                          className="primary"
+                          onClick={() => window.open(intent.paymongo_checkout_url as string, "_blank", "noopener,noreferrer")}
+                          type="button"
+                        >
+                          Pay with PayMongo
+                        </button>
+                      )}
+                      <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "refresh")} type="button">
+                        Refresh Status
+                      </button>
+                    </>
                   )}
                   {canCancel && (
                     <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "cancel")} type="button">
