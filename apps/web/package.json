@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pasalo/shared": "workspace:*",
+    "@pasalo/shared": "file:../../packages/shared",
     "next": "15.1.3",
     "react": "19.0.0",
     "react-dom": "19.0.0",

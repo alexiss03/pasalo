@@ -18,7 +18,7 @@
     "@fastify/cors": "^11.1.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/sensible": "^6.0.3",
-    "@pasalo/shared": "workspace:*",
+    "@pasalo/shared": "file:../../packages/shared",
     "bcryptjs": "^3.0.2",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
