@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "../web/node_modules/.bin/next dev -p 3001",
-    "build": "../web/node_modules/.bin/next build",
-    "start": "../web/node_modules/.bin/next start -p 3001",
+    "dev": "next dev -p ${PORT:-3001}",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3001}",
     "lint": "echo 'No lint for admin yet'",
-    "typecheck": "../web/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "next": "15.1.3",
