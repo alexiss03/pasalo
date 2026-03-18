@@ -73,7 +73,6 @@ export default function MessagesPage() {
     <section className="grid" style={{ gap: 16 }}>
       <div className="card">
         <h1 style={{ marginTop: 0 }}>Messages</h1>
-        <p className="small">Chat is enabled for inquiries and scheduling. Payment discussion in chat is blocked.</p>
       </div>
 
       {loading && (

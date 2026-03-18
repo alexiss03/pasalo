@@ -46,7 +46,6 @@ export default function SignupPage() {
   return (
     <section className="card auth-panel">
       <h1 style={{ marginTop: 0 }}>Create account</h1>
-      <p className="small">Sign up as buyer or seller. Additional roles can be requested after registration.</p>
 
       <form className="grid auth-form" onSubmit={submit}>
         <label className="form-field">

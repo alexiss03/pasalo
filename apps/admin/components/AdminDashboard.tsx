@@ -95,7 +95,6 @@ type ListingItem = {
   transaction_status: string;
   transfer_status: string;
   is_featured: boolean;
-  readiness_score: number;
   owner_email: string | null;
   owner_name: string | null;
   location_city: string;
@@ -157,7 +156,6 @@ type PaginatedResponse<T> = {
 type ListingDraft = {
   status: string;
   isFeatured: boolean;
-  readinessScore: number;
   documentAssistanceRequested: boolean;
   documentAssistanceStatus: string;
   documentAssistanceNotes: string;
@@ -255,7 +253,6 @@ export function AdminDashboard() {
           next[item.id] = {
             status: item.status,
             isFeatured: item.is_featured,
-            readinessScore: Number(item.readiness_score ?? 0),
             documentAssistanceRequested: Boolean(item.document_assistance_requested),
             documentAssistanceStatus: item.document_assistance_status ?? "not_requested",
             documentAssistanceNotes: item.document_assistance_notes ?? "",
@@ -489,7 +486,6 @@ export function AdminDashboard() {
         body: {
           status: draft.status,
           isFeatured: draft.isFeatured,
-          readinessScore: Number(draft.readinessScore),
           documentAssistanceRequested: draft.documentAssistanceRequested,
           documentAssistanceStatus: draft.documentAssistanceStatus,
           documentAssistanceNotes: draft.documentAssistanceNotes.trim() ? draft.documentAssistanceNotes.trim() : null,
@@ -880,7 +876,6 @@ export function AdminDashboard() {
                     <th>Title</th>
                     <th>Status</th>
                     <th>Featured</th>
-                    <th>Readiness</th>
                     <th>Commission %</th>
                     <th>Lead Validity (months)</th>
                     <th>Payment Due (days)</th>
@@ -897,7 +892,6 @@ export function AdminDashboard() {
                     const draft = listingDrafts[item.id] ?? {
                       status: item.status,
                       isFeatured: item.is_featured,
-                      readinessScore: Number(item.readiness_score ?? 0),
                       documentAssistanceRequested: Boolean(item.document_assistance_requested),
                       documentAssistanceStatus: item.document_assistance_status ?? "not_requested",
                       documentAssistanceNotes: item.document_assistance_notes ?? "",
@@ -944,23 +938,6 @@ export function AdminDashboard() {
                               }))
                             }
                             type="checkbox"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            min={0}
-                            max={100}
-                            type="number"
-                            value={draft.readinessScore}
-                            onChange={(event) =>
-                              setListingDrafts((prev) => ({
-                                ...prev,
-                                [item.id]: {
-                                  ...draft,
-                                  readinessScore: Number(event.target.value),
-                                },
-                              }))
-                            }
                           />
                         </td>
                         <td>

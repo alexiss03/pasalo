@@ -1449,54 +1449,6 @@ button.ghost {
   font-size: 13px;
 }
 
-.readiness-block {
-  margin-top: 4px;
-  display: grid;
-  gap: 4px;
-}
-
-.readiness-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.readiness-head span {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #647387;
-}
-
-.readiness-head strong {
-  font-size: 13px;
-  color: #1f2c3d;
-}
-
-.readiness-track {
-  height: 6px;
-  width: 100%;
-  border: 1px solid #d5deeb;
-  background: #f6f9fd;
-}
-
-.readiness-fill {
-  height: 100%;
-}
-
-.readiness-high {
-  background: #2f7a4a;
-}
-
-.readiness-mid {
-  background: #b7852f;
-}
-
-.readiness-low {
-  background: #b24b42;
-}
-
 .peg-listing-badges {
   display: flex;
   gap: 6px;

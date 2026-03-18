@@ -189,7 +189,7 @@ function buildSellerReason(baseReason: string, seller: SellerDetails): string {
     `City/Province: ${normalizeSingleLine(seller.cityProvince)}`,
     `Seller capacity: ${capacityLabels[seller.capacity]}`,
     `TIN status: ${tinStatusLabels[seller.tinStatus]}`,
-    "Document readiness:",
+    "Document declaration:",
     `- Government ID: ${seller.hasGovernmentId ? "yes" : "no"}`,
     `- Notarized transfer document (sale/assignment): ${seller.hasTransferDocument ? "yes" : "no"}`,
     `- Tax declaration or title copy (OCT/TCT/CCT): ${seller.hasTitleOrTaxDeclaration ? "yes" : "no"}`,
@@ -327,7 +327,7 @@ export default function ApplyRolePage() {
         return;
       }
       if (!buyerDetails.hasGovernmentId) {
-        setError("Declare government ID readiness to continue.");
+        setError("Declare government ID availability to continue.");
         return;
       }
       if (!buyerDetails.understandsTransferProcess) {
@@ -398,11 +398,11 @@ export default function ApplyRolePage() {
         return;
       }
       if (!agentDetails.hasGovernmentId) {
-        setError("Declare government ID readiness to continue.");
+        setError("Declare government ID availability to continue.");
         return;
       }
       if (!agentDetails.hasPtrOrOfficialReceipt) {
-        setError("Declare PTR/Official Receipt readiness to continue.");
+        setError("Declare PTR/Official Receipt availability to continue.");
         return;
       }
       if (!agentDetails.legalComplianceAccepted) {
@@ -476,7 +476,7 @@ export default function ApplyRolePage() {
             <ol className="agreement-flow">
               <li>Provide legal name and active contact number for seller coordination.</li>
               <li>Declare preferred location, budget range, and financing plan.</li>
-              <li>Confirm valid government ID readiness for KYC and transfer documentation.</li>
+              <li>Confirm valid government ID availability for KYC and transfer documentation.</li>
               <li>Acknowledge transfer-process steps before deal execution.</li>
             </ol>
             <div className="seller-details-grid">
@@ -599,8 +599,8 @@ export default function ApplyRolePage() {
             <ol className="agreement-flow">
               <li>PRC license information is required for real estate service practice under RA 9646.</li>
               <li>Provide brokerage/company and service coverage areas.</li>
-              <li>Provide contact information and valid government ID readiness.</li>
-              <li>Declare PTR/official receipt readiness for compliant operations.</li>
+              <li>Provide contact information and valid government ID availability.</li>
+              <li>Declare PTR/official receipt availability for compliant operations.</li>
             </ol>
             <p className="small" style={{ margin: "4px 0 8px" }}>
               Reference:{" "}
@@ -834,7 +834,7 @@ export default function ApplyRolePage() {
               </label>
             </div>
             <p className="small" style={{ margin: 0 }}>
-              Document readiness declaration:
+              Document declaration:
             </p>
             <div className="seller-doc-checks">
               <label className="inline-check">

@@ -25,7 +25,6 @@ interface ListingDetail {
   turnover_date: string | null;
   status: string;
   is_open_for_new_buyers: boolean;
-  readiness_score: number;
   seller_name: string;
   verification_status: string;
   original_price_php: string;
@@ -91,24 +90,6 @@ function formatTagLabel(value: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
-function toReadinessPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function readinessToneClass(value: number): string {
-  const score = toReadinessPercent(value);
-  if (score >= 85) {
-    return "readiness-high";
-  }
-  if (score >= 65) {
-    return "readiness-mid";
-  }
-  return "readiness-low";
-}
-
 export default async function ListingDetailPage({
   params,
 }: {
@@ -161,18 +142,6 @@ export default async function ListingDetailPage({
           <span className="badge">{formatTagLabel(listing.property_type)}</span>
           {listing.verification_status === "verified" && <span className="badge">Verified Pasalo</span>}
           <span className="badge">Status {formatTagLabel(listing.status)}</span>
-        </div>
-        <div className="readiness-block" style={{ marginTop: 10, maxWidth: 280 }}>
-          <div className="readiness-head">
-            <span>Readiness</span>
-            <strong>{toReadinessPercent(listing.readiness_score)}%</strong>
-          </div>
-          <div aria-hidden="true" className="readiness-track">
-            <div
-              className={`readiness-fill ${readinessToneClass(listing.readiness_score)}`}
-              style={{ width: `${toReadinessPercent(listing.readiness_score)}%` }}
-            />
-          </div>
         </div>
         <div style={{ marginTop: 12 }}>
           <FavoriteToggleButton listingId={listing.id} />

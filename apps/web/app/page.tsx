@@ -10,7 +10,6 @@ interface ListingItem {
   project_name: string;
   cash_out_price_php: string;
   monthly_amortization_php: string;
-  readiness_score: number;
   is_verified: boolean;
   is_open_for_new_buyers: boolean;
   transaction_status: string;
@@ -188,24 +187,6 @@ function resolveListingImage(item: ListingItem, variant: "hero" | "thumb"): stri
   return samplePhotoPool[poolIndex] ?? fallbackImages.thumb;
 }
 
-function toReadinessPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function readinessToneClass(value: number): string {
-  const score = toReadinessPercent(value);
-  if (score >= 85) {
-    return "readiness-high";
-  }
-  if (score >= 65) {
-    return "readiness-mid";
-  }
-  return "readiness-low";
-}
-
 const testimonials = [
   {
     quote:
@@ -286,9 +267,6 @@ export default async function HomePage({
       if (a.is_featured !== b.is_featured) {
         return Number(b.is_featured) - Number(a.is_featured);
       }
-      if (a.readiness_score !== b.readiness_score) {
-        return b.readiness_score - a.readiness_score;
-      }
       return toTimestamp(b.last_confirmed_at ?? b.created_at) - toTimestamp(a.last_confirmed_at ?? a.created_at);
     })
     .slice(0, 4);
@@ -352,18 +330,6 @@ export default async function HomePage({
           <div className="peg-listing-financials">
             <span>Cash out: {formatPhp(item.cash_out_price_php)}</span>
             <span>Monthly: {formatPhp(item.monthly_amortization_php)}</span>
-          </div>
-          <div className="readiness-block">
-            <div className="readiness-head">
-              <span>Readiness</span>
-              <strong>{toReadinessPercent(item.readiness_score)}%</strong>
-            </div>
-            <div aria-hidden="true" className="readiness-track">
-              <div
-                className={`readiness-fill ${readinessToneClass(item.readiness_score)}`}
-                style={{ width: `${toReadinessPercent(item.readiness_score)}%` }}
-              />
-            </div>
           </div>
           <div className="peg-listing-badges">
             {item.is_verified && <span className="badge">Verified Pasalo</span>}
@@ -486,7 +452,6 @@ export default async function HomePage({
           <div>
             <p>[05]</p>
             <h3>What Our Clients Say</h3>
-            <span>Real experiences from sellers, buyers, and investors using verified pasalo listings.</span>
           </div>
           <div className="testimonial-reviews-chip">
             <strong>200+</strong>
@@ -512,7 +477,6 @@ export default async function HomePage({
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Top Listings</h3>
-            <p className="small">Featured and high-readiness listings.</p>
           </div>
           <div className="section-grid">
             {topListings.map((item) => renderEditorialCard(item, "top"))}
@@ -523,7 +487,6 @@ export default async function HomePage({
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Newest Listings</h3>
-            <p className="small">Recently added inventory.</p>
           </div>
           <div className="section-grid">
             {newestListings.map((item) => renderEditorialCard(item, "new"))}
@@ -534,7 +497,6 @@ export default async function HomePage({
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Ongoing Biddings</h3>
-            <p className="small">Auction listings currently open for bidding.</p>
           </div>
           <div className="section-grid">
             {ongoingBiddings.map((item) => renderEditorialCard(item, "bid"))}
@@ -545,7 +507,6 @@ export default async function HomePage({
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Fresh inventory</h3>
-            <p className="small">Sorted by verification and freshness.</p>
           </div>
 
           <div className="section-grid">

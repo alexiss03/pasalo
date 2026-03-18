@@ -8,6 +8,31 @@ importers:
 
   .: {}
 
+  apps/admin:
+    dependencies:
+      next:
+        specifier: 15.1.3
+        version: 15.1.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      react:
+        specifier: 19.0.0
+        version: 19.0.0
+      react-dom:
+        specifier: 19.0.0
+        version: 19.0.0(react@19.0.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.7
+        version: 22.19.15
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.14)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   apps/api:
     dependencies:
       '@fastify/cors':
@@ -20,7 +45,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.4
       '@pasalo/shared':
-        specifier: workspace:*
+        specifier: file:../../packages/shared
         version: link:../../packages/shared
       bcryptjs:
         specifier: ^3.0.2
@@ -54,7 +79,7 @@ importers:
   apps/web:
     dependencies:
       '@pasalo/shared':
-        specifier: workspace:*
+        specifier: file:../../packages/shared
         version: link:../../packages/shared
       next:
         specifier: 15.1.3
@@ -82,7 +107,11 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/shared: {}
+  packages/shared:
+    dependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
 packages:
 

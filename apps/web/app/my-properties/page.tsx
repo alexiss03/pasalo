@@ -17,7 +17,6 @@ type MyListingItem = {
   status: string;
   transaction_status: string;
   is_open_for_new_buyers: boolean;
-  readiness_score: number;
 };
 
 type FavoriteItem = {
@@ -152,7 +151,6 @@ export default function MyPropertiesPage() {
           <span className="badge">{formatTagLabel(item.property_type)}</span>
           <span className="badge">Listing {formatTagLabel(item.status)}</span>
           <span className="badge">Deal {formatTagLabel(item.transaction_status)}</span>
-          <span className="badge">Readiness {item.readiness_score}</span>
         </div>
       </article>
     </Link>
@@ -181,7 +179,6 @@ export default function MyPropertiesPage() {
     <section className="market-section">
       <div className="peg-results-head">
         <h3>Property Hub</h3>
-        <p className="small">Manage your listings and the properties you are tracking.</p>
       </div>
 
       <div className="segmented-control">

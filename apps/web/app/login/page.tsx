@@ -33,7 +33,6 @@ export default function LoginPage() {
   return (
     <section className="card auth-panel auth-panel-login">
       <h1 style={{ marginTop: 0 }}>Login</h1>
-      <p className="small">Access your pasalo account.</p>
 
       <form className="grid" onSubmit={submit}>
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required type="email" />

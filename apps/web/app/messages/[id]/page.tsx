@@ -260,9 +260,6 @@ export default function ConversationPage() {
           </Link>
         </p>
         <h1 style={{ marginBottom: 8 }}>{conversation?.listing_title}</h1>
-        <p className="small" style={{ margin: 0 }}>
-          Payment-related terms are blocked in chat. Use the PayMongo payment actions below.
-        </p>
       </div>
 
       <div className="card chat-thread">
@@ -302,9 +299,6 @@ export default function ConversationPage() {
 
       <div className="card grid" style={{ gap: 10 }}>
         <h2 style={{ marginTop: 0, marginBottom: 0 }}>In-App Payments</h2>
-        <p className="small" style={{ margin: 0 }}>
-          Keep payments on platform for tracking and dispute support via PayMongo.
-        </p>
 
         {canCreatePaymentIntent && (
           <form className="grid" onSubmit={createPaymentIntent}>
