@@ -287,6 +287,37 @@ export default async function HomePage({
     .slice(0, 4);
 
   const heroListing = displayItems[0];
+  const projectSpotlights = [...new Map(sectionSource.map((item) => [item.project_name || item.id, item])).values()]
+    .slice(0, 6)
+    .map((item) => ({
+      id: item.id,
+      projectName: item.project_name,
+      location: `${item.location_city}, ${item.location_province}`,
+      propertyType: formatTagLabel(item.property_type),
+      href: `/listings/${item.id}`,
+    }));
+
+  const fallbackProjects = [
+    { projectName: "Metro Manila Core Projects", location: "Quezon City, Metro Manila", propertyType: "Condo" },
+    { projectName: "South Growth Corridor", location: "Santa Rosa, Laguna", propertyType: "House & lot" },
+    { projectName: "Cavite Expansion Lots", location: "Dasmarinas, Cavite", propertyType: "Lot only" },
+  ];
+
+  const partnerRows = [
+    {
+      name: "Licensed Broker Network",
+      detail: "Broker partners supporting PRC-compliant sales handling and deal closure.",
+    },
+    {
+      name: "Legal Documentation Partners",
+      detail: "Attorneys and documentation teams for transfer packets and contract review.",
+    },
+    {
+      name: "Financing Partners",
+      detail: "Mortgage and installment providers for in-house and Pag-IBIG-assisted pathways.",
+    },
+  ];
+
   const categoryHighlights = [
     {
       label: "Apartments",
@@ -357,12 +388,12 @@ export default async function HomePage({
         <article className="editorial-hero-card">
           <div className="editorial-hero-topbar">
             <strong>PASALO PROPERTY</strong>
-            <div>
-              <span>Projects</span>
-              <span>Properties</span>
-              <span>Partners</span>
-              <span>Contact</span>
-            </div>
+            <nav className="editorial-hero-links" aria-label="Home sections">
+              <Link href="#projects">Projects</Link>
+              <Link href="#properties">Properties</Link>
+              <Link href="#partners">Partners</Link>
+              <Link href="#contact">Contact</Link>
+            </nav>
             <button type="button">Book a call</button>
           </div>
 
@@ -469,11 +500,68 @@ export default async function HomePage({
         </div>
       </section>
 
+      <section className="market-section project-section" id="projects">
+        <div className="peg-results-head">
+          <h3>Projects</h3>
+        </div>
+        <div className="project-grid">
+          {projectSpotlights.length
+            ? projectSpotlights.map((project) => (
+                <Link className="project-card" href={project.href} key={project.id}>
+                  <p>{project.propertyType}</p>
+                  <h4>{project.projectName}</h4>
+                  <span>{project.location}</span>
+                </Link>
+              ))
+            : fallbackProjects.map((project) => (
+                <article className="project-card" key={project.projectName}>
+                  <p>{project.propertyType}</p>
+                  <h4>{project.projectName}</h4>
+                  <span>{project.location}</span>
+                </article>
+              ))}
+        </div>
+      </section>
+
+      <section className="market-section partner-section" id="partners">
+        <div className="peg-results-head">
+          <h3>Partners</h3>
+        </div>
+        <div className="partner-grid">
+          {partnerRows.map((partner) => (
+            <article className="partner-card" key={partner.name}>
+              <h4>{partner.name}</h4>
+              <p>{partner.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="market-section contact-section" id="contact">
+        <div className="peg-results-head">
+          <h3>Contact</h3>
+        </div>
+        <div className="contact-grid">
+          <p>
+            Need listing help or transfer guidance? Use in-app messaging for active listings, or request role access to
+            assist with selling, legal, and documentation flow.
+          </p>
+          <div className="contact-actions">
+            <Link className="primary" href="/messages">
+              Open messages
+            </Link>
+            <Link className="ghost-button" href="/apply-role">
+              Apply role
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {degraded && (
         <p className="small">Listing database is currently unavailable. Showing an empty fallback feed.</p>
       )}
 
-      <section className="market-sections-stack">
+      <section className="market-sections-stack" id="properties">
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Top Listings</h3>
