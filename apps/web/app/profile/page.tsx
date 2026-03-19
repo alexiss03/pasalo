@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch } from "../../lib/api";
+import { ApiRequestError, apiFetch } from "../../lib/api";
 import { clearAuthToken, getAuthToken } from "../../lib/auth";
 
 type MeResponse = {
@@ -24,6 +24,28 @@ export default function ProfilePage() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const toLabel = (value: string | null | undefined): string => {
+    if (!value) {
+      return "N/A";
+    }
+    return value
+      .replaceAll("_", " ")
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const isUnauthorized = (error: unknown): boolean => {
+    if (error instanceof ApiRequestError) {
+      return error.status === 401 || error.status === 403;
+    }
+
+    if (error instanceof Error) {
+      return /(unauthorized|forbidden|token|401|403)/i.test(error.message);
+    }
+
+    return false;
+  };
+
   useEffect(() => {
     const token = getAuthToken();
     if (!token) {
@@ -36,7 +58,12 @@ export default function ProfilePage() {
       try {
         const result = await apiFetch<MeResponse>("/me", { token });
         setMe(result);
-      } catch {
+      } catch (error) {
+        if (isUnauthorized(error)) {
+          clearAuthToken();
+          window.location.href = "/login?next=/profile";
+          return;
+        }
         setMe(null);
       } finally {
         setLoading(false);
@@ -70,45 +97,66 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <h3 className="profile-subhead">Account Overview</h3>
-          <div className="profile-props-grid">
-            <article className="profile-prop-card">
-              <p>Email</p>
-              <strong>{me.email}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Name</p>
-              <strong>{me.full_name ?? "N/A"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Role</p>
-              <strong>{me.role}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Phone</p>
-              <strong>{me.phone ?? "N/A"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>City</p>
-              <strong>{me.city ?? "N/A"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Verification</p>
-              <strong>{me.verification_status ?? "N/A"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Pasalo ID</p>
-              <strong>{me.platform_identity_code ?? "Not issued yet"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Identity auth</p>
-              <strong>{me.identity_ai_status ?? "N/A"}</strong>
-            </article>
-            <article className="profile-prop-card">
-              <p>Identity review</p>
-              <strong>{me.identity_review_status ?? "N/A"}</strong>
-            </article>
-          </div>
+          <section className="profile-section">
+            <h3 className="profile-subhead">Account Overview</h3>
+            <div className="profile-props-grid">
+              <article className="profile-prop-card">
+                <p>Email</p>
+                <strong>{me.email}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Name</p>
+                <strong>{me.full_name ?? "N/A"}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Role</p>
+                <strong>{toLabel(me.role)}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Phone</p>
+                <strong>{me.phone ?? "N/A"}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>City</p>
+                <strong>{me.city ?? "N/A"}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Verification</p>
+                <strong>{toLabel(me.verification_status)}</strong>
+              </article>
+            </div>
+          </section>
+
+          <section className="profile-section">
+            <h3 className="profile-subhead">Identity Verification</h3>
+            <div className="profile-props-grid">
+              <article className="profile-prop-card">
+                <p>Pasalo ID</p>
+                <strong>{me.platform_identity_code ?? "Not issued yet"}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>AI document auth</p>
+                <strong>{toLabel(me.identity_ai_status)}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Manual review</p>
+                <strong>{toLabel(me.identity_review_status)}</strong>
+              </article>
+              <article className="profile-prop-card">
+                <p>Submitted</p>
+                <strong>
+                  {me.identity_submitted_at
+                    ? new Date(me.identity_submitted_at).toLocaleDateString("en-PH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })
+                    : "Not submitted"}
+                </strong>
+              </article>
+            </div>
+          </section>
+
           <div className="profile-actions">
             <Link className="ghost-button" href="/my-properties">
               My Properties

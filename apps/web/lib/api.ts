@@ -35,6 +35,16 @@ type RequestOptions = {
   token?: string | null;
 };
 
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const apiUrl = resolveApiUrl();
   const hasBody = typeof options.body !== "undefined";
@@ -50,7 +60,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(error?.message || `Request failed with ${response.status}`);
+    throw new ApiRequestError(response.status, error?.message || `Request failed with ${response.status}`);
   }
 
   return response.json() as Promise<T>;

@@ -1000,6 +1000,11 @@ button.ghost {
   gap: 10px;
 }
 
+.profile-section {
+  display: grid;
+  gap: 8px;
+}
+
 .profile-subhead {
   margin: 0;
   font-size: 14px;
@@ -1154,7 +1159,7 @@ button.ghost {
 }
 
 .profile-actions {
-  margin-top: 6px;
+  margin-top: 2px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1618,6 +1623,74 @@ button.ghost {
   gap: 10px;
 }
 
+.message-search-input {
+  width: 100%;
+}
+
+.message-list {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.message-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.message-row:last-child {
+  border-bottom: 0;
+}
+
+.message-row:hover {
+  background: #f7faff;
+}
+
+.message-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.message-row-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #182334;
+}
+
+.message-row-meta {
+  margin: 0;
+  font-size: 11px;
+  color: #5a6679;
+}
+
+.message-row-preview {
+  margin: 0;
+  font-size: 13px;
+  color: #2b3545;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-row-side {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 6px;
+}
+
+.message-row-age {
+  font-size: 11px;
+  color: #5e6878;
+}
+
 .chat-message {
   max-width: min(680px, 100%);
   border: 1px solid var(--line);
@@ -1929,6 +2002,16 @@ button.ghost {
   .project-grid,
   .partner-grid {
     grid-template-columns: 1fr;
+  }
+
+  .message-row {
+    grid-template-columns: 1fr;
+  }
+
+  .message-row-side {
+    justify-items: start;
+    grid-auto-flow: column;
+    justify-content: start;
   }
 
 }

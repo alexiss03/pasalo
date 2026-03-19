@@ -13,10 +13,15 @@
     "dev:api": "npm run dev --workspace @pasalo/api",
     "test": "npm run test --workspace @pasalo/shared && npm run test --workspace @pasalo/api",
     "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace @pasalo/web",
+    "build:api": "npm run build --workspace @pasalo/api",
     "build:admin": "npm run build --workspace @pasalo/admin",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:migrate": "npm run db:migrate --workspace @pasalo/api",
+    "start": "npm run start --workspace @pasalo/web",
+    "start:web": "npm run start --workspace @pasalo/web",
+    "start:api": "npm run start --workspace @pasalo/api",
     "start:admin": "npm run start --workspace @pasalo/admin"
   }
 }

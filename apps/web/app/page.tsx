@@ -321,9 +321,9 @@ export default async function HomePage({
   const categoryHighlights = [
     {
       label: "Apartments",
-      title: "Stylish City Apartments",
-      copy: "Explore urban apartments with easier transfer terms and practical monthly dues.",
-      href: toBrowseHref({ ...filters, type: "condo" }),
+      title: "Stylish City Apartments in Quezon City",
+      copy: "Featured: QC Condo Pasalo - Avida Cloverleaf 1BR. Explore urban apartments with easier transfer terms and practical monthly dues.",
+      href: toBrowseHref({ ...filters, type: "condo", city: "Quezon City" }),
     },
     {
       label: "Commercial",
