@@ -50,7 +50,10 @@ type SeedListing = {
   createdDaysAgo: number;
 };
 
-const seedUsers: Record<"sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" | "attorneyA", SeedUser> = {
+const seedUsers: Record<
+  "sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" | "dummyBuyer" | "attorneyA",
+  SeedUser
+> = {
   sellerA: {
     email: "seed.seller.a@pasalo.local",
     role: "seller",
@@ -89,6 +92,14 @@ const seedUsers: Record<"sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" |
     fullName: "Seed Buyer Bianca",
     phone: "09170000006",
     city: "Pasig",
+    verificationStatus: "verified",
+  },
+  dummyBuyer: {
+    email: "dummy@pasalo.local",
+    role: "buyer",
+    fullName: "Dummy Buyer Demo",
+    phone: "09170000007",
+    city: "Quezon City",
     verificationStatus: "verified",
   },
   attorneyA: {
@@ -876,6 +887,51 @@ async function run() {
             },
           ],
         },
+        {
+          listingId: listingIds[0],
+          buyerUserId: userIds.dummyBuyer,
+          sellerUserId: userIds.sellerA,
+          createdHoursAgo: 3,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hi, I’m the demo account and I’m checking whether this listing is still accepting viewings this week.",
+              minutesAfterStart: 4,
+              readMinutesAfterStart: 10,
+            },
+            {
+              sender: "seller",
+              body: "Yes, still open. You can use the Request Viewing button and pick from the listed schedule slots.",
+              minutesAfterStart: 12,
+              readMinutesAfterStart: 18,
+            },
+            {
+              sender: "buyer",
+              body: "Perfect. I also want to confirm that the updated statement of account is already available in the listing packet.",
+              minutesAfterStart: 24,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[2],
+          buyerUserId: userIds.dummyBuyer,
+          sellerUserId: userIds.sellerA,
+          createdHoursAgo: 40,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hello, this is the dummy test buyer account. I’m interested in the Cavite house listing and want to compare the monthly terms.",
+              minutesAfterStart: 6,
+              readMinutesAfterStart: 14,
+            },
+            {
+              sender: "seller",
+              body: "Sure. The monthly amortization is reflected in the listing and the transfer status is already with developer approval.",
+              minutesAfterStart: 16,
+              readMinutesAfterStart: 25,
+            },
+          ],
+        },
       ];
 
       for (const seedConversation of conversationSeeds) {
@@ -919,10 +975,12 @@ async function run() {
         values
           ($1, $2),
           ($1, $3),
-          ($1, $4)
+          ($1, $4),
+          ($5, $2),
+          ($5, $6)
         on conflict (user_id, listing_id) do nothing
       `,
-        [userIds.buyerA, listingIds[0], listingIds[1], listingIds[3]],
+        [userIds.buyerA, listingIds[0], listingIds[1], listingIds[3], userIds.dummyBuyer, listingIds[2]],
       );
     }
 
