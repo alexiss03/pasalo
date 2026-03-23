@@ -69,6 +69,19 @@ function formatTagLabel(value: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
+function toProjectSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function toProjectHref(projectName: string): string {
+  const slug = toProjectSlug(projectName) || "project";
+  return `/projects/${slug}?name=${encodeURIComponent(projectName)}`;
+}
+
 function normalizeFilters(raw: Record<string, string | string[] | undefined>): BrowseFilters {
   const read = (key: keyof BrowseFilters): string | undefined => {
     const value = raw[key];
@@ -294,13 +307,28 @@ export default async function HomePage({
       projectName: item.project_name,
       location: `${item.location_city}, ${item.location_province}`,
       propertyType: formatTagLabel(item.property_type),
-      href: `/listings/${item.id}`,
+      href: toProjectHref(item.project_name),
     }));
 
   const fallbackProjects = [
-    { projectName: "Metro Manila Core Projects", location: "Quezon City, Metro Manila", propertyType: "Condo" },
-    { projectName: "South Growth Corridor", location: "Santa Rosa, Laguna", propertyType: "House & lot" },
-    { projectName: "Cavite Expansion Lots", location: "Dasmarinas, Cavite", propertyType: "Lot only" },
+    {
+      projectName: "Metro Manila Core Projects",
+      location: "Quezon City, Metro Manila",
+      propertyType: "Condo",
+      href: "/projects",
+    },
+    {
+      projectName: "South Growth Corridor",
+      location: "Santa Rosa, Laguna",
+      propertyType: "House & lot",
+      href: "/projects",
+    },
+    {
+      projectName: "Cavite Expansion Lots",
+      location: "Dasmarinas, Cavite",
+      propertyType: "Lot only",
+      href: "/projects",
+    },
   ];
 
   const partnerRows = [
@@ -323,7 +351,7 @@ export default async function HomePage({
       label: "Apartments",
       title: "Stylish City Apartments in Quezon City",
       copy: "Featured: QC Condo Pasalo - Avida Cloverleaf 1BR. Explore urban apartments with easier transfer terms and practical monthly dues.",
-      href: toBrowseHref({ ...filters, type: "condo", city: "Quezon City" }),
+      href: "/apartments",
     },
     {
       label: "Commercial",
@@ -389,9 +417,9 @@ export default async function HomePage({
           <div className="editorial-hero-topbar">
             <strong>PASALO PROPERTY</strong>
             <nav className="editorial-hero-links" aria-label="Home sections">
-              <Link href="#projects">Projects</Link>
+              <Link href="/projects">Projects</Link>
               <Link href="#properties">Properties</Link>
-              <Link href="#partners">Partners</Link>
+              <Link href="/clients">Clients</Link>
               <Link href="#contact">Contact</Link>
             </nav>
             <button type="button">Book a call</button>
@@ -503,6 +531,9 @@ export default async function HomePage({
       <section className="market-section project-section" id="projects">
         <div className="peg-results-head">
           <h3>Projects</h3>
+          <Link className="ghost-button" href="/projects">
+            View all projects
+          </Link>
         </div>
         <div className="project-grid">
           {projectSpotlights.length
@@ -514,11 +545,11 @@ export default async function HomePage({
                 </Link>
               ))
             : fallbackProjects.map((project) => (
-                <article className="project-card" key={project.projectName}>
+                <Link className="project-card" href={project.href} key={project.projectName}>
                   <p>{project.propertyType}</p>
                   <h4>{project.projectName}</h4>
                   <span>{project.location}</span>
-                </article>
+                </Link>
               ))}
         </div>
       </section>

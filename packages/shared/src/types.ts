@@ -63,6 +63,12 @@ export interface CreateListingRequest {
     requested: boolean;
     notes?: string | null;
   };
+  viewingAvailability?: {
+    enabled: boolean;
+    slots?: string[];
+    durationMinutes?: number;
+    intervalMinutes?: number;
+  };
   photoUrls?: string[];
   sellerAgreement: {
     accepted: boolean;

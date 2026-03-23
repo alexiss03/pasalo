@@ -3,6 +3,7 @@ import { apiFetch } from "../../../lib/api";
 import { StartChatButton } from "../../../components/StartChatButton";
 import { ListingPhotoCarousel } from "../../../components/ListingPhotoCarousel";
 import { FavoriteToggleButton } from "../../../components/FavoriteToggleButton";
+import { RequestViewingButton } from "../../../components/RequestViewingButton";
 
 interface ListingMedia {
   id: string;
@@ -36,6 +37,10 @@ interface ListingDetail {
   remaining_amortization_months: number | string;
   available_in_pagibig: boolean;
   available_in_house_loan: boolean;
+  viewing_availability_enabled: boolean;
+  viewing_availability_slots: unknown;
+  viewing_duration_minutes: number | null;
+  viewing_interval_minutes: number | null;
   media?: ListingMedia[];
 }
 
@@ -125,6 +130,11 @@ export default async function ListingDetailPage({
       src: item.storage_key,
       isPrimary: item.is_primary,
     }));
+  const viewingSlots = Array.isArray(listing.viewing_availability_slots)
+    ? listing.viewing_availability_slots
+        .map((value) => (typeof value === "string" ? value : null))
+        .filter((value): value is string => Boolean(value))
+    : [];
 
   return (
     <section className="grid" style={{ gap: 18 }}>
@@ -234,6 +244,26 @@ export default async function ListingDetailPage({
         <StartChatButton
           listingId={listing.id}
           isOpenForNewBuyers={listing.is_open_for_new_buyers}
+        />
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Viewing</h3>
+        <p className="small">
+          Request an onsite viewing. Available seller schedule slots are shown in the calendar modal when provided.
+        </p>
+        {listing.viewing_availability_enabled && (
+          <p className="small" style={{ marginTop: 0 }}>
+            Duration: {listing.viewing_duration_minutes ?? 30} min • Interval: {listing.viewing_interval_minutes ?? 30} min
+          </p>
+        )}
+        <RequestViewingButton
+          isOpenForNewBuyers={listing.is_open_for_new_buyers}
+          listingId={listing.id}
+          viewingAvailabilityEnabled={listing.viewing_availability_enabled}
+          viewingAvailabilitySlots={viewingSlots}
+          viewingDurationMinutes={listing.viewing_duration_minutes ?? 30}
+          viewingIntervalMinutes={listing.viewing_interval_minutes ?? 30}
         />
       </div>
     </section>

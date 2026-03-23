@@ -50,7 +50,7 @@ type SeedListing = {
   createdDaysAgo: number;
 };
 
-const seedUsers: Record<"sellerA" | "sellerB" | "agentA" | "buyerA" | "attorneyA", SeedUser> = {
+const seedUsers: Record<"sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" | "attorneyA", SeedUser> = {
   sellerA: {
     email: "seed.seller.a@pasalo.local",
     role: "seller",
@@ -81,6 +81,14 @@ const seedUsers: Record<"sellerA" | "sellerB" | "agentA" | "buyerA" | "attorneyA
     fullName: "Seed Buyer Aurora",
     phone: "09170000004",
     city: "Imus",
+    verificationStatus: "verified",
+  },
+  buyerB: {
+    email: "seed.buyer.b@pasalo.local",
+    role: "buyer",
+    fullName: "Seed Buyer Bianca",
+    phone: "09170000006",
+    city: "Pasig",
     verificationStatus: "verified",
   },
   attorneyA: {
@@ -595,7 +603,12 @@ async function run() {
         buyerUserId: string;
         sellerUserId: string;
         createdHoursAgo: number;
-        messages: Array<{ sender: "buyer" | "seller"; body: string; minutesAfterStart: number }>;
+        messages: Array<{
+          sender: "buyer" | "seller";
+          body: string;
+          minutesAfterStart: number;
+          readMinutesAfterStart?: number;
+        }>;
       }> = [
         {
           listingId: listingIds[0],
@@ -603,16 +616,23 @@ async function run() {
           sellerUserId: userIds.sellerA,
           createdHoursAgo: 5,
           messages: [
-            { sender: "buyer", body: "Hi! Is this listing still available?", minutesAfterStart: 5 },
+            {
+              sender: "buyer",
+              body: "Hi! Is this listing still available?",
+              minutesAfterStart: 5,
+              readMinutesAfterStart: 14,
+            },
             {
               sender: "seller",
               body: "Yes, still available. We can schedule an on-site viewing this week.",
               minutesAfterStart: 18,
+              readMinutesAfterStart: 26,
             },
             {
               sender: "buyer",
               body: "Great. Could you share if the developer statement of account is updated this month?",
               minutesAfterStart: 29,
+              readMinutesAfterStart: 38,
             },
             {
               sender: "seller",
@@ -631,11 +651,13 @@ async function run() {
               sender: "buyer",
               body: "Hello, I’m interested in this Laguna unit. Is transfer processing already started?",
               minutesAfterStart: 3,
+              readMinutesAfterStart: 12,
             },
             {
               sender: "seller",
               body: "Transfer is not started yet, but all seller documents are prepared for review.",
               minutesAfterStart: 20,
+              readMinutesAfterStart: 28,
             },
             {
               sender: "buyer",
@@ -654,26 +676,203 @@ async function run() {
               sender: "buyer",
               body: "Hi agent, I’m comparing this BGC studio against another option in Makati.",
               minutesAfterStart: 8,
+              readMinutesAfterStart: 16,
             },
             {
               sender: "seller",
               body: "Happy to help. This one has flexible turnover and complete verification checks.",
               minutesAfterStart: 17,
+              readMinutesAfterStart: 25,
             },
             {
               sender: "buyer",
               body: "Can you send the floor plan and latest timeline for developer approval?",
               minutesAfterStart: 33,
+              readMinutesAfterStart: 45,
             },
             {
               sender: "seller",
               body: "Sure. I’ll upload both in the listing files and confirm once ready.",
               minutesAfterStart: 47,
+              readMinutesAfterStart: 60,
             },
             {
               sender: "buyer",
               body: "Thanks, I’ll review and get back with my preferred viewing time.",
               minutesAfterStart: 70,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[2],
+          buyerUserId: userIds.buyerA,
+          sellerUserId: userIds.sellerA,
+          createdHoursAgo: 10,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hi! I’m checking if this Cavite house listing is still open for new buyers.",
+              minutesAfterStart: 4,
+              readMinutesAfterStart: 10,
+            },
+            {
+              sender: "seller",
+              body: "Yes, still open. Transfer status is currently in developer approval.",
+              minutesAfterStart: 11,
+              readMinutesAfterStart: 18,
+            },
+            {
+              sender: "buyer",
+              body: "Understood. Do you allow a weekday viewing after office hours?",
+              minutesAfterStart: 20,
+              readMinutesAfterStart: 28,
+            },
+            {
+              sender: "seller",
+              body: "Yes. Please send your preferred schedule via Request Viewing so we can lock the slot.",
+              minutesAfterStart: 31,
+            },
+            {
+              sender: "buyer",
+              body: "Perfect. I’ll submit a viewing request for Thursday evening.",
+              minutesAfterStart: 36,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[4],
+          buyerUserId: userIds.buyerA,
+          sellerUserId: userIds.agentA,
+          createdHoursAgo: 18,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Good day. Is this lot listing currently under active bidding?",
+              minutesAfterStart: 2,
+              readMinutesAfterStart: 7,
+            },
+            {
+              sender: "seller",
+              body: "Yes, auction is live. You can still submit your interest and we’ll keep you updated.",
+              minutesAfterStart: 9,
+              readMinutesAfterStart: 13,
+            },
+            {
+              sender: "buyer",
+              body: "Noted. Please include me in updates if top bid changes.",
+              minutesAfterStart: 15,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[5],
+          buyerUserId: userIds.buyerA,
+          sellerUserId: userIds.sellerA,
+          createdHoursAgo: 72,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hi, I saw this Makati condo marked as pending review. Any update on publish status?",
+              minutesAfterStart: 7,
+              readMinutesAfterStart: 20,
+            },
+            {
+              sender: "seller",
+              body: "Admin review is in progress. I’ll notify you once it is fully live.",
+              minutesAfterStart: 23,
+              readMinutesAfterStart: 31,
+            },
+            {
+              sender: "buyer",
+              body: "Thanks. I’m mainly checking monthly terms and turnover schedule.",
+              minutesAfterStart: 32,
+              readMinutesAfterStart: 41,
+            },
+            {
+              sender: "seller",
+              body: "Sure. I can share those details here as soon as the listing clears review.",
+              minutesAfterStart: 45,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[0],
+          buyerUserId: userIds.buyerB,
+          sellerUserId: userIds.sellerA,
+          createdHoursAgo: 14,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hello, I’m comparing this Cloverleaf unit with another one nearby. Is the cash out firm?",
+              minutesAfterStart: 6,
+              readMinutesAfterStart: 17,
+            },
+            {
+              sender: "seller",
+              body: "There is slight room for discussion after viewing, but the listed amount is close to target.",
+              minutesAfterStart: 19,
+              readMinutesAfterStart: 27,
+            },
+            {
+              sender: "buyer",
+              body: "That helps. I’m mostly looking for something with a clean transfer path and updated docs.",
+              minutesAfterStart: 34,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[3],
+          buyerUserId: userIds.buyerB,
+          sellerUserId: userIds.sellerB,
+          createdHoursAgo: 8,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Hi seller, I like the South Residences listing. Are amenity areas already complete?",
+              minutesAfterStart: 3,
+              readMinutesAfterStart: 14,
+            },
+            {
+              sender: "seller",
+              body: "Most amenities are operational already. I can send updated site photos in the listing shortly.",
+              minutesAfterStart: 18,
+              readMinutesAfterStart: 29,
+            },
+            {
+              sender: "buyer",
+              body: "Nice. I’m free for a viewing on Friday afternoon if slots are open.",
+              minutesAfterStart: 41,
+            },
+          ],
+        },
+        {
+          listingId: listingIds[1],
+          buyerUserId: userIds.buyerB,
+          sellerUserId: userIds.agentA,
+          createdHoursAgo: 22,
+          messages: [
+            {
+              sender: "buyer",
+              body: "Good evening. Can you clarify if this BGC unit is better suited for rental or end use?",
+              minutesAfterStart: 5,
+              readMinutesAfterStart: 13,
+            },
+            {
+              sender: "seller",
+              body: "It works for both, but most buyers ask about rental because of the business-district location.",
+              minutesAfterStart: 16,
+              readMinutesAfterStart: 24,
+            },
+            {
+              sender: "buyer",
+              body: "Understood. Please keep me posted if the seller updates the turnover flexibility.",
+              minutesAfterStart: 33,
+              readMinutesAfterStart: 42,
+            },
+            {
+              sender: "seller",
+              body: "Will do. I’ll message here once I have the revised timeline from the owner.",
+              minutesAfterStart: 47,
             },
           ],
         },
@@ -700,12 +899,16 @@ async function run() {
           const senderUserId =
             message.sender === "buyer" ? seedConversation.buyerUserId : seedConversation.sellerUserId;
           const createdAt = new Date(conversationCreatedAt.getTime() + message.minutesAfterStart * 60 * 1000);
+          const readAt =
+            typeof message.readMinutesAfterStart === "number"
+              ? new Date(conversationCreatedAt.getTime() + message.readMinutesAfterStart * 60 * 1000)
+              : null;
           await client.query(
             `
-            insert into messages (conversation_id, sender_user_id, body, created_at)
-            values ($1, $2, $3, $4)
+            insert into messages (conversation_id, sender_user_id, body, created_at, read_at)
+            values ($1, $2, $3, $4, $5)
           `,
-            [conversationId, senderUserId, message.body, createdAt],
+            [conversationId, senderUserId, message.body, createdAt, readAt],
           );
         }
       }

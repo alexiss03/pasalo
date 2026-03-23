@@ -14,6 +14,13 @@ const sellerAgreementSchema = z.object({
   attorneySignatureMethod: z.literal("typed_name_checkbox"),
 });
 
+const listingViewingAvailabilitySchema = z.object({
+  enabled: z.boolean(),
+  slots: z.array(z.string().datetime()).max(90).optional(),
+  durationMinutes: z.number().int().min(15).max(240).optional(),
+  intervalMinutes: z.number().int().min(5).max(240).optional(),
+});
+
 const createListingSchema = z.object({
   propertyType: z.enum(["condo", "house_lot", "lot_only"]),
   projectName: z.string().min(2),
@@ -65,6 +72,7 @@ const createListingSchema = z.object({
       notes: z.string().max(2000).optional().nullable(),
     })
     .optional(),
+  viewingAvailability: listingViewingAvailabilitySchema.optional(),
   photoUrls: z.array(z.string().url()).max(15).optional(),
   sellerAgreement: sellerAgreementSchema,
 }) satisfies z.ZodType<CreateListingRequest>;
@@ -194,6 +202,49 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
     return Buffer.byteLength(decodeURIComponent(payload), "utf8");
   };
 
+  const normalizeViewingAvailability = (
+    input:
+      | {
+          enabled: boolean;
+          slots?: string[];
+          durationMinutes?: number;
+          intervalMinutes?: number;
+        }
+      | undefined,
+  ) => {
+    const durationMinutes = Math.max(15, Math.min(240, input?.durationMinutes ?? 30));
+    const intervalMinutes = Math.max(5, Math.min(240, input?.intervalMinutes ?? 30));
+
+    if (!input) {
+      return {
+        enabled: false,
+        slots: [] as string[],
+        durationMinutes,
+        intervalMinutes,
+      };
+    }
+
+    const deduped = Array.from(
+      new Set(
+        (input.slots ?? [])
+          .map((value) => {
+            const parsed = new Date(value);
+            return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+          })
+          .filter((value): value is string => Boolean(value)),
+      ),
+    )
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+      .slice(0, 90);
+
+    return {
+      enabled: Boolean(input.enabled) && deduped.length > 0,
+      slots: deduped,
+      durationMinutes,
+      intervalMinutes,
+    };
+  };
+
   fastify.get("/developers", async (request) => {
     const query = developersQuerySchema.parse(request.query);
     const whereSql = query.activeOnly ? "where is_active = true" : "";
@@ -261,6 +312,7 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
       const assistanceStatus = assistanceRequested ? "requested" : "not_requested";
+      const viewingAvailability = normalizeViewingAvailability(body.viewingAvailability);
       const auctionStartAt = shouldAuction ? new Date() : null;
       const auctionEndAt =
         shouldAuction && auctionBiddingDays
@@ -300,13 +352,17 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             auction_start_at,
             auction_end_at,
             auction_bidding_days,
+            viewing_availability_enabled,
+            viewing_availability_slots,
+            viewing_duration_minutes,
+            viewing_interval_minutes,
             document_assistance_requested,
             document_assistance_status,
             document_assistance_notes,
             document_assistance_requested_at,
             document_assistance_updated_at
           )
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',now(),30,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26)
           returning *
         `,
           [
@@ -327,6 +383,10 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
             auctionStartAt,
             auctionEndAt,
             auctionBiddingDays ?? null,
+            viewingAvailability.enabled,
+            JSON.stringify(viewingAvailability.slots),
+            viewingAvailability.durationMinutes,
+            viewingAvailability.intervalMinutes,
             assistanceRequested,
             assistanceStatus,
             assistanceNotes,
@@ -846,6 +906,29 @@ export const listingRoutes: FastifyPluginAsync = async (fastify) => {
           where id = $3
         `,
           [assistanceRequested, assistanceNotes, params.id],
+        );
+      }
+
+      if (body.viewingAvailability !== undefined) {
+        const viewingAvailability = normalizeViewingAvailability(body.viewingAvailability);
+        await pool.query(
+          `
+          update listings
+          set
+            viewing_availability_enabled = $1,
+            viewing_availability_slots = $2::jsonb,
+            viewing_duration_minutes = $3,
+            viewing_interval_minutes = $4,
+            updated_at = now()
+          where id = $5
+        `,
+          [
+            viewingAvailability.enabled,
+            JSON.stringify(viewingAvailability.slots),
+            viewingAvailability.durationMinutes,
+            viewingAvailability.intervalMinutes,
+            params.id,
+          ],
         );
       }
 

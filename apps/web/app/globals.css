@@ -195,6 +195,45 @@ a {
   gap: 16px;
 }
 
+.apartments-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.apartments-hero {
+  display: grid;
+  gap: 10px;
+}
+
+.apartments-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5e6878;
+}
+
+.apartments-hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4.8vw, 3.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.apartments-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #3b4659;
+  max-width: 90ch;
+}
+
+.apartments-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .editorial-shell {
   display: grid;
   gap: 14px;
@@ -883,6 +922,28 @@ button:disabled,
   flex-wrap: wrap;
 }
 
+.viewing-modal {
+  max-width: 620px;
+}
+
+.viewing-slot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.viewing-slot-button {
+  border: 1px solid #d5d9df;
+  background: #fff;
+  color: #151b24;
+}
+
+.viewing-slot-button.active {
+  border-color: #17365d;
+  background: #17365d;
+  color: #f4f8ff;
+}
+
 .agreement-box {
   border: 1px solid #d8dade;
   background: #f8f8f8;
@@ -951,6 +1012,25 @@ button {
   font-weight: 600;
 }
 
+.primary,
+.ghost {
+  width: auto;
+  border-radius: 0;
+  border: 1px solid #d4d6da;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  background: #fff;
+  color: #171a1f;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 input:disabled,
 select:disabled,
 textarea:disabled {
@@ -967,6 +1047,16 @@ button.primary {
 }
 
 button.ghost {
+  background: transparent;
+}
+
+.primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.ghost {
   background: transparent;
 }
 
@@ -1360,6 +1450,33 @@ button.ghost {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.project-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-summary-card {
+  border: 1px solid var(--line);
+  background: #fbfdff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.project-summary-card p {
+  margin: 0;
+  font-size: 12px;
+  color: #5f6978;
+}
+
+.project-summary-card h4 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  color: #1d2737;
 }
 
 .project-card,
@@ -1934,7 +2051,8 @@ button.ghost {
   }
 
   .project-grid,
-  .partner-grid {
+  .partner-grid,
+  .project-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2000,7 +2118,8 @@ button.ghost {
   }
 
   .project-grid,
-  .partner-grid {
+  .partner-grid,
+  .project-summary-grid {
     grid-template-columns: 1fr;
   }
 

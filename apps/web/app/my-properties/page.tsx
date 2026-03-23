@@ -137,23 +137,28 @@ export default function MyPropertiesPage() {
   }
 
   const renderMyListingCard = (item: MyListingItem) => (
-    <Link className="listing-card-link" href={`/listings/${item.id}`} key={`mine-${item.id}`}>
-      <article className="card listing-card peg-listing-card">
+    <article className="card listing-card peg-listing-card" key={`mine-${item.id}`}>
+      <Link className="listing-card-link" href={`/listings/${item.id}`}>
         <h3 className="peg-listing-title">{item.title}</h3>
-        <p className="small peg-listing-location">
-          {item.project_name} • {item.location_city}, {item.location_province}
-        </p>
-        <div className="peg-listing-financials">
-          <span>Cash out: {formatPhp(item.cash_out_price_php)}</span>
-          <span>Monthly: {formatPhp(item.monthly_amortization_php)}</span>
-        </div>
-        <div className="peg-listing-badges">
-          <span className="badge">{formatTagLabel(item.property_type)}</span>
-          <span className="badge">Listing {formatTagLabel(item.status)}</span>
-          <span className="badge">Deal {formatTagLabel(item.transaction_status)}</span>
-        </div>
-      </article>
-    </Link>
+      </Link>
+      <p className="small peg-listing-location">
+        {item.project_name} • {item.location_city}, {item.location_province}
+      </p>
+      <div className="peg-listing-financials">
+        <span>Cash out: {formatPhp(item.cash_out_price_php)}</span>
+        <span>Monthly: {formatPhp(item.monthly_amortization_php)}</span>
+      </div>
+      <div className="peg-listing-badges">
+        <span className="badge">{formatTagLabel(item.property_type)}</span>
+        <span className="badge">Listing {formatTagLabel(item.status)}</span>
+        <span className="badge">Deal {formatTagLabel(item.transaction_status)}</span>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <Link className="ghost-button" href={`/listings/${item.id}/edit`}>
+          Edit Listing
+        </Link>
+      </div>
+    </article>
   );
 
   const renderSavedCard = (item: FavoriteItem) => (

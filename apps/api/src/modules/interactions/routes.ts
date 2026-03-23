@@ -27,6 +27,9 @@ const patchViewingSchema = z.object({
   status: z.enum(["proposed", "accepted", "rejected", "rescheduled", "completed"]),
   notes: z.string().max(1000).optional(),
 });
+const listViewingRequestsQuerySchema = z.object({
+  status: z.enum(["proposed", "accepted", "rejected", "rescheduled", "completed"]).optional(),
+});
 
 const createPaymentIntentSchema = z.object({
   amountPhp: z.coerce.number().positive().max(100_000_000),
@@ -651,6 +654,60 @@ export const interactionRoutes: FastifyPluginAsync = async (fastify) => {
       await upsertLeadRecord(params.id, request.user.sub);
 
       return reply.code(201).send(inserted.rows[0]);
+    },
+  );
+
+  fastify.get(
+    "/listings/:id/viewing-requests",
+    {
+      preHandler: [fastify.authenticate],
+    },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const query = listViewingRequestsQuerySchema.parse(request.query);
+
+      const listingResult = await pool.query(
+        "select owner_user_id from listings where id = $1",
+        [params.id],
+      );
+      if (!listingResult.rowCount) {
+        throw fastify.httpErrors.notFound("Listing not found");
+      }
+
+      const listingOwnerUserId = listingResult.rows[0].owner_user_id as string;
+      const isOwner = listingOwnerUserId === request.user.sub;
+      if (!isOwner && request.user.role !== "admin") {
+        throw fastify.httpErrors.forbidden("Only listing owner can view all viewing requests");
+      }
+
+      const values: Array<string> = [params.id];
+      const whereClauses = ["vr.listing_id = $1"];
+      if (query.status) {
+        values.push(query.status);
+        whereClauses.push(`vr.status = $${values.length}`);
+      }
+
+      const result = await pool.query(
+        `
+        select
+          vr.id,
+          vr.listing_id,
+          vr.buyer_user_id,
+          vr.seller_user_id,
+          vr.proposed_at,
+          vr.status,
+          vr.notes,
+          vr.created_at,
+          pb.full_name as buyer_name
+        from viewing_requests vr
+        left join profiles pb on pb.user_id = vr.buyer_user_id
+        where ${whereClauses.join(" and ")}
+        order by vr.proposed_at asc, vr.created_at asc
+      `,
+        values,
+      );
+
+      return { items: result.rows };
     },
   );
 

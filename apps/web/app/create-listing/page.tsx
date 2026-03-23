@@ -35,6 +35,8 @@ type PublishType = "normal" | "premium_top";
 const DEFAULT_COMMISSION_RATE_PCT = 3;
 const DEFAULT_LEAD_VALIDITY_MONTHS = 12;
 const DEFAULT_PAYMENT_DUE_DAYS = 7;
+const DEFAULT_VIEWING_DURATION_MINUTES = 30;
+const DEFAULT_VIEWING_INTERVAL_MINUTES = 30;
 
 type PublishListingResponse = {
   status: "pending_review";
@@ -160,6 +162,15 @@ export default function CreateListingPage() {
   const [availableInHouseLoan, setAvailableInHouseLoan] = useState(false);
   const [documentAssistanceRequested, setDocumentAssistanceRequested] = useState(false);
   const [documentAssistanceNotes, setDocumentAssistanceNotes] = useState("");
+  const [viewingAvailabilityEnabled, setViewingAvailabilityEnabled] = useState(false);
+  const [viewingAvailabilitySlots, setViewingAvailabilitySlots] = useState<string[]>([]);
+  const [viewingSlotInput, setViewingSlotInput] = useState("");
+  const [viewingDurationMinutesInput, setViewingDurationMinutesInput] = useState(
+    String(DEFAULT_VIEWING_DURATION_MINUTES),
+  );
+  const [viewingIntervalMinutesInput, setViewingIntervalMinutesInput] = useState(
+    String(DEFAULT_VIEWING_INTERVAL_MINUTES),
+  );
 
   const [isAuctionEnabled, setIsAuctionEnabled] = useState(false);
   const [auctionBiddingDays, setAuctionBiddingDays] = useState(7);
@@ -429,6 +440,11 @@ export default function CreateListingPage() {
     setAvailableInHouseLoan(false);
     setDocumentAssistanceRequested(false);
     setDocumentAssistanceNotes("");
+    setViewingAvailabilityEnabled(false);
+    setViewingAvailabilitySlots([]);
+    setViewingSlotInput("");
+    setViewingDurationMinutesInput(String(DEFAULT_VIEWING_DURATION_MINUTES));
+    setViewingIntervalMinutesInput(String(DEFAULT_VIEWING_INTERVAL_MINUTES));
 
     setIsAuctionEnabled(false);
     setAuctionBiddingDays(7);
@@ -487,6 +503,29 @@ export default function CreateListingPage() {
     }
     if (documentAssistanceRequested && documentAssistanceNotes.trim().length < 10) {
       setError("Add at least 10 characters for document assistance notes.");
+      setSubmitAction(null);
+      return;
+    }
+    if (viewingAvailabilityEnabled && viewingAvailabilitySlots.length === 0) {
+      setError("Add at least one viewing availability slot or disable availability.");
+      setSubmitAction(null);
+      return;
+    }
+    const viewingDurationMinutes = parseNonNegativeInteger(viewingDurationMinutesInput);
+    const viewingIntervalMinutes = parseNonNegativeInteger(viewingIntervalMinutesInput);
+    if (
+      viewingAvailabilityEnabled &&
+      (viewingDurationMinutes === null || viewingDurationMinutes < 15 || viewingDurationMinutes > 240)
+    ) {
+      setError("Viewing duration must be from 15 to 240 minutes.");
+      setSubmitAction(null);
+      return;
+    }
+    if (
+      viewingAvailabilityEnabled &&
+      (viewingIntervalMinutes === null || viewingIntervalMinutes < 5 || viewingIntervalMinutes > 240)
+    ) {
+      setError("Viewing interval must be from 5 to 240 minutes.");
       setSubmitAction(null);
       return;
     }
@@ -559,6 +598,16 @@ export default function CreateListingPage() {
           documentAssistance: {
             requested: documentAssistanceRequested,
             notes: documentAssistanceRequested ? documentAssistanceNotes.trim() : null,
+          },
+          viewingAvailability: {
+            enabled: viewingAvailabilityEnabled,
+            slots: viewingAvailabilityEnabled ? viewingAvailabilitySlots : [],
+            durationMinutes: viewingAvailabilityEnabled
+              ? (viewingDurationMinutes ?? DEFAULT_VIEWING_DURATION_MINUTES)
+              : DEFAULT_VIEWING_DURATION_MINUTES,
+            intervalMinutes: viewingAvailabilityEnabled
+              ? (viewingIntervalMinutes ?? DEFAULT_VIEWING_INTERVAL_MINUTES)
+              : DEFAULT_VIEWING_INTERVAL_MINUTES,
           },
           photoUrls: cleanedPhotoUrls,
           sellerAgreement: {
@@ -636,6 +685,35 @@ export default function CreateListingPage() {
       reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
       reader.readAsDataURL(file);
     });
+
+  const addViewingSlot = () => {
+    if (!viewingSlotInput) {
+      setError("Pick a viewing date and time first.");
+      return;
+    }
+
+    const parsed = new Date(viewingSlotInput);
+    if (!Number.isFinite(parsed.getTime())) {
+      setError("Enter a valid viewing slot.");
+      return;
+    }
+
+    const slot = parsed.toISOString();
+    if (viewingAvailabilitySlots.includes(slot)) {
+      setError("This viewing slot is already added.");
+      return;
+    }
+
+    setViewingAvailabilitySlots((current) =>
+      [...current, slot].sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
+    );
+    setViewingSlotInput("");
+    setError(null);
+  };
+
+  const removeViewingSlot = (slot: string) => {
+    setViewingAvailabilitySlots((current) => current.filter((item) => item !== slot));
+  };
 
   const handlePhotoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -881,6 +959,81 @@ export default function CreateListingPage() {
               </>
             )}
           </div>
+        </div>
+
+        <div className="card grid">
+          <h3 style={{ margin: 0 }}>Viewing Availability</h3>
+          <div className="form-field">
+            <label className="inline-check">
+              <input
+                checked={viewingAvailabilityEnabled}
+                onChange={(e) => setViewingAvailabilityEnabled(e.target.checked)}
+                type="checkbox"
+              />
+              Add seller viewing availability
+            </label>
+            <p className="field-note">Buyers can request viewing from these available slots.</p>
+          </div>
+
+          {viewingAvailabilityEnabled && (
+            <>
+              <div className="grid grid-2">
+                <label className="form-field">
+                  <span className="field-label">Viewing Duration (minutes)</span>
+                  <input
+                    min={15}
+                    max={240}
+                    onChange={(e) => setViewingDurationMinutesInput(e.target.value)}
+                    type="number"
+                    value={viewingDurationMinutesInput}
+                  />
+                </label>
+                <label className="form-field">
+                  <span className="field-label">Viewing Interval (minutes)</span>
+                  <input
+                    min={5}
+                    max={240}
+                    onChange={(e) => setViewingIntervalMinutesInput(e.target.value)}
+                    type="number"
+                    value={viewingIntervalMinutesInput}
+                  />
+                </label>
+              </div>
+
+              <div className="field-row">
+                <input
+                  min={new Date().toISOString().slice(0, 16)}
+                  onChange={(e) => setViewingSlotInput(e.target.value)}
+                  step={Math.max(1, Number(viewingIntervalMinutesInput) || DEFAULT_VIEWING_INTERVAL_MINUTES) * 60}
+                  type="datetime-local"
+                  value={viewingSlotInput}
+                />
+                <button className="ghost-button" onClick={addViewingSlot} type="button">
+                  Add slot
+                </button>
+              </div>
+              <div className="grid">
+                {!viewingAvailabilitySlots.length && (
+                  <p className="small" style={{ margin: 0 }}>
+                    No viewing slots yet. Add at least one slot.
+                  </p>
+                )}
+                {viewingAvailabilitySlots.map((slot) => (
+                  <div className="field-row" key={slot}>
+                    <p className="small" style={{ margin: 0 }}>
+                      {new Intl.DateTimeFormat("en-PH", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(slot))}
+                    </p>
+                    <button className="ghost-button" onClick={() => removeViewingSlot(slot)} type="button">
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="card grid">
