@@ -52,6 +52,11 @@ export default function AdminLoginPage() {
         <p className="eyebrow">Pasalo Admin</p>
         <h1>Admin Login</h1>
         <p className="muted">Use an account with admin role to access controls.</p>
+        <div className="demo-credentials">
+          <p className="demo-credentials-label">Seeded admin</p>
+          <p className="demo-credentials-value">seed.admin.a@pasalo.local</p>
+          <p className="demo-credentials-value">SeedPass123!</p>
+        </div>
         <form className="admin-form" onSubmit={submit}>
           <input
             autoComplete="email"

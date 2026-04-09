@@ -416,12 +416,6 @@ export default async function HomePage({
         <article className="editorial-hero-card">
           <div className="editorial-hero-topbar">
             <strong>PASALO PROPERTY</strong>
-            <nav className="editorial-hero-links" aria-label="Home sections">
-              <Link href="/projects">Projects</Link>
-              <Link href="#properties">Properties</Link>
-              <Link href="/clients">Clients</Link>
-              <Link href="#contact">Contact</Link>
-            </nav>
             <button type="button">Book a call</button>
           </div>
 
@@ -510,11 +504,11 @@ export default async function HomePage({
         <div className="testimonial-strip-head">
           <div>
             <p>[05]</p>
-            <h3>What Our Clients Say</h3>
+            <h3>What People Say</h3>
           </div>
           <div className="testimonial-reviews-chip">
             <strong>200+</strong>
-            <span>Client reviews</span>
+            <span>Community reviews</span>
           </div>
         </div>
         <div className="testimonial-grid">
@@ -525,32 +519,6 @@ export default async function HomePage({
               <span>{item.role}</span>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="market-section project-section" id="projects">
-        <div className="peg-results-head">
-          <h3>Projects</h3>
-          <Link className="ghost-button" href="/projects">
-            View all projects
-          </Link>
-        </div>
-        <div className="project-grid">
-          {projectSpotlights.length
-            ? projectSpotlights.map((project) => (
-                <Link className="project-card" href={project.href} key={project.id}>
-                  <p>{project.propertyType}</p>
-                  <h4>{project.projectName}</h4>
-                  <span>{project.location}</span>
-                </Link>
-              ))
-            : fallbackProjects.map((project) => (
-                <Link className="project-card" href={project.href} key={project.projectName}>
-                  <p>{project.propertyType}</p>
-                  <h4>{project.projectName}</h4>
-                  <span>{project.location}</span>
-                </Link>
-              ))}
         </div>
       </section>
 
@@ -568,31 +536,11 @@ export default async function HomePage({
         </div>
       </section>
 
-      <section className="market-section contact-section" id="contact">
-        <div className="peg-results-head">
-          <h3>Contact</h3>
-        </div>
-        <div className="contact-grid">
-          <p>
-            Need listing help or transfer guidance? Use in-app messaging for active listings, or request role access to
-            assist with selling, legal, and documentation flow.
-          </p>
-          <div className="contact-actions">
-            <Link className="primary" href="/messages">
-              Open messages
-            </Link>
-            <Link className="ghost-button" href="/apply-role">
-              Apply role
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {degraded && (
         <p className="small">Listing database is currently unavailable. Showing an empty fallback feed.</p>
       )}
 
-      <section className="market-sections-stack" id="properties">
+      <section className="market-sections-stack">
         <section className="peg-results market-section">
           <div className="peg-results-head">
             <h3>Top Listings</h3>

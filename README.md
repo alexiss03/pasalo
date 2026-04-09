@@ -80,3 +80,6 @@ Implementation baseline for the Pasalo v1 MVP.
 - Platform lead records are automatically logged on inquiry, conversation start, and viewing request with buyer name, contact number, email, inquiry date, and property ID.
 - Core schema includes deal, messaging, verification, watchlist, and audit tables for next sprints.
 - Freshness job is included: `npm run job:freshness --workspace @pasalo/api`.
+- Auth supports two modes: `AUTH_PROVIDER=local` keeps the current PostgreSQL + bcrypt credential flow, while `AUTH_PROVIDER=supabase` moves signup/login to Supabase Auth while preserving the existing API endpoints and JWT session shape used by the web app.
+- Upload storage supports a local fallback by default. Set `STORAGE_PROVIDER=supabase` plus `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` in `apps/api/.env` to store listing photos and verification files in Supabase Storage.
+- To run fully on Supabase-managed services, point `DATABASE_URL` to your Supabase Postgres connection string, set `AUTH_PROVIDER=supabase`, and configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`.

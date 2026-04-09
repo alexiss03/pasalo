@@ -3,7 +3,7 @@ import { pool } from "./pool";
 
 type SeedUser = {
   email: string;
-  role: "buyer" | "seller" | "agent" | "attorney";
+  role: "buyer" | "seller" | "agent" | "attorney" | "admin";
   fullName: string;
   phone: string;
   city: string;
@@ -51,7 +51,7 @@ type SeedListing = {
 };
 
 const seedUsers: Record<
-  "sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" | "dummyBuyer" | "attorneyA",
+  "sellerA" | "sellerB" | "agentA" | "buyerA" | "buyerB" | "dummyBuyer" | "adminA" | "attorneyA",
   SeedUser
 > = {
   sellerA: {
@@ -100,6 +100,14 @@ const seedUsers: Record<
     fullName: "Dummy Buyer Demo",
     phone: "09170000007",
     city: "Quezon City",
+    verificationStatus: "verified",
+  },
+  adminA: {
+    email: "seed.admin.a@pasalo.local",
+    role: "admin",
+    fullName: "Seed Admin Atlas",
+    phone: "09170000008",
+    city: "Makati",
     verificationStatus: "verified",
   },
   attorneyA: {

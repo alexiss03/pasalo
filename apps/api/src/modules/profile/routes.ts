@@ -8,6 +8,7 @@ import {
   verificationDocTypes,
 } from "./documentAuth";
 import type { AiDocAuthStatus, VerificationDocType } from "./documentAuth";
+import { estimateDataUrlBytes, uploadDataUrlAsset } from "../../lib/storage";
 
 const updateProfileSchema = z.object({
   fullName: z.string().min(2).optional(),
@@ -130,36 +131,6 @@ function generatePlatformIdentityCode() {
 
 function generateCaptureSessionToken() {
   return randomBytes(24).toString("hex");
-}
-
-function estimateDataUrlBytes(value: string): number | null {
-  if (!value.startsWith("data:")) {
-    return null;
-  }
-
-  const commaIndex = value.indexOf(",");
-  if (commaIndex < 0) {
-    return null;
-  }
-
-  const header = value.slice(0, commaIndex);
-  const payload = value.slice(commaIndex + 1);
-  if (header.includes(";base64")) {
-    const normalizedPayload = payload.replace(/\s+/g, "");
-    const padding = normalizedPayload.endsWith("==") ? 2 : normalizedPayload.endsWith("=") ? 1 : 0;
-    return Math.max(0, Math.floor((normalizedPayload.length * 3) / 4) - padding);
-  }
-
-  return Buffer.byteLength(decodeURIComponent(payload), "utf8");
-}
-
-function toCaptureStorageKey(fieldType: z.infer<typeof mobileCaptureFieldSchema>, fileName?: string) {
-  const extension = fileName?.toLowerCase().endsWith(".png") ? "png" : "jpg";
-  const baseName = fileName?.trim().replace(/\s+/g, "_") || `${fieldType}_${Date.now()}.${extension}`;
-  const ensuredName = baseName.toLowerCase().includes(fieldType)
-    ? baseName
-    : `${fieldType}_${baseName}`;
-  return `https://uploads.pasalo.local/mobile/${encodeURIComponent(ensuredName)}`;
 }
 
 export const profileRoutes: FastifyPluginAsync = async (fastify) => {
@@ -433,9 +404,19 @@ export const profileRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const fieldType = String(item.field_type) as z.infer<typeof mobileCaptureFieldSchema>;
-    const storageKey = toCaptureStorageKey(fieldType, body.fileName);
-    const capturedFileName =
-      body.fileName?.trim() || decodeURIComponent(storageKey.split("/").pop() || `${fieldType}_${Date.now()}.jpg`);
+    const uploadKind =
+      fieldType === "id"
+        ? "identity_id"
+        : fieldType === "selfie"
+          ? "identity_selfie"
+          : "identity_authority";
+
+    const uploaded = await uploadDataUrlAsset({
+      kind: uploadKind,
+      dataUrl: imageDataUrl,
+      fileName: body.fileName,
+      userId: String(item.user_id),
+    });
 
     const updated = await pool.query(
       `
@@ -458,7 +439,7 @@ export const profileRoutes: FastifyPluginAsync = async (fastify) => {
         created_at,
         updated_at
     `,
-      [params.id, storageKey, capturedFileName],
+      [params.id, uploaded.storageKey, uploaded.fileName],
     );
 
     return reply.code(201).send({

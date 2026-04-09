@@ -233,7 +233,7 @@ export default function EditListingPage() {
       <div className="card">
         <p style={{ marginTop: 0 }}>
           <Link className="nav-chip" href="/my-properties">
-            My Properties
+            Listing Hub
           </Link>
         </p>
         <h1 style={{ marginBottom: 0 }}>{listing?.title ?? "Edit Listing"}</h1>

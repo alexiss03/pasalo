@@ -159,7 +159,7 @@ export default function ProfilePage() {
 
           <div className="profile-actions">
             <Link className="ghost-button" href="/my-properties">
-              My Properties
+              Listing Hub
             </Link>
             <Link className="ghost-button" href="/apply-role">
               Apply Role

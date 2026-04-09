@@ -35,15 +35,21 @@ type RequestOptions = {
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const apiUrl = resolveApiUrl();
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method || "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiUrl}${path}`, {
+      method: options.method || "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error(`Admin API is unreachable at ${apiUrl}. Start the API server or update NEXT_PUBLIC_API_URL.`);
+  }
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as { message?: string } | null;

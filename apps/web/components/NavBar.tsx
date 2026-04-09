@@ -6,10 +6,17 @@ import { usePathname } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { getAuthToken, setAuthToken } from "../lib/auth";
 
+type ConversationFeed = {
+  items: Array<{
+    unread_count: number;
+  }>;
+};
+
 export function NavBar() {
   const pathname = usePathname();
   const isAuthRoute = pathname === "/login" || pathname === "/signup";
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,6 +36,41 @@ export function NavBar() {
       window.removeEventListener("storage", syncAuthState);
     };
   }, [pathname]);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      setUnreadMessages(0);
+      return;
+    }
+
+    let active = true;
+
+    const loadUnread = async () => {
+      try {
+        const result = await apiFetch<ConversationFeed>("/conversations", { token });
+        if (!active) {
+          return;
+        }
+        const totalUnread = result.items.reduce((sum, item) => sum + Number(item.unread_count ?? 0), 0);
+        setUnreadMessages(totalUnread);
+      } catch {
+        if (active) {
+          setUnreadMessages(0);
+        }
+      }
+    };
+
+    void loadUnread();
+    const interval = window.setInterval(() => {
+      void loadUnread();
+    }, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isAuthenticated, pathname]);
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,11 +112,15 @@ export function NavBar() {
       </Link>
       {isAuthenticated && (
         <div className="nav-right-actions">
+          <Link className="nav-link" href="/promotions">
+            Promotions
+          </Link>
           <Link className="nav-link" href="/my-properties">
-            My Properties
+            Listing Hub
           </Link>
           <Link className="nav-link" href="/messages">
             Messages
+            {unreadMessages > 0 && <span className="nav-unread-pill">{unreadMessages}</span>}
           </Link>
           <Link className="nav-action nav-action-inline" href="/create-listing">
             Post a property
@@ -85,35 +131,43 @@ export function NavBar() {
         </div>
       )}
       {!isAuthenticated && !isAuthRoute && (
-        <form className="nav-login-form" onSubmit={submitLogin}>
-          <input
-            autoComplete="email"
-            className="nav-login-input"
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Email"
-            required
-            type="email"
-            value={email}
-          />
-          <input
-            autoComplete="current-password"
-            className="nav-login-input"
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
-            required
-            type="password"
-            value={password}
-          />
-          <button className="nav-action nav-login-submit" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "..." : "Login"}
-          </button>
-          <Link className="nav-link nav-signup-link" href="/signup">
-            Sign up
+        <div className="nav-right-actions nav-right-actions-unauth">
+          <Link className="nav-link" href="/promotions">
+            Promotions
           </Link>
-        </form>
+          <form className="nav-login-form" onSubmit={submitLogin}>
+            <input
+              autoComplete="email"
+              className="nav-login-input"
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email"
+              required
+              type="email"
+              value={email}
+            />
+            <input
+              autoComplete="current-password"
+              className="nav-login-input"
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password"
+              required
+              type="password"
+              value={password}
+            />
+            <button className="nav-action nav-login-submit" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "..." : "Login"}
+            </button>
+            <Link className="nav-link nav-signup-link" href="/signup">
+              Sign up
+            </Link>
+          </form>
+        </div>
       )}
       {!isAuthenticated && isAuthRoute && (
         <div className="nav-right-actions nav-auth-actions">
+          <Link className="nav-link" href="/promotions">
+            Promotions
+          </Link>
           {pathname === "/signup" ? (
             <Link className="nav-action nav-action-inline" href="/login">
               Login

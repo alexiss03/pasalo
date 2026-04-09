@@ -131,6 +131,11 @@ a {
   gap: 8px;
 }
 
+.nav-right-actions-unauth {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .nav-auth-actions {
   margin-left: auto;
 }
@@ -1738,10 +1743,65 @@ button.ghost {
 .chat-thread {
   display: grid;
   gap: 10px;
+  min-height: 280px;
 }
 
 .message-search-input {
   width: 100%;
+}
+
+.nav-unread-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #173d7a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.messages-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.messages-hero-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.messages-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.messages-summary-tile {
+  border: 1px solid var(--line);
+  padding: 12px;
+  background: #f8faff;
+  display: grid;
+  gap: 6px;
+}
+
+.messages-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #617089;
+}
+
+.messages-toolbar-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .message-list {
@@ -1806,6 +1866,25 @@ button.ghost {
 .message-row-age {
   font-size: 11px;
   color: #5e6878;
+}
+
+.messages-thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.messages-thread-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.86fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.message-thread-details {
+  display: grid;
+  gap: 10px;
 }
 
 .chat-message {
@@ -1916,13 +1995,16 @@ button.ghost {
     justify-content: flex-start;
   }
 
+  .nav-right-actions-unauth {
+    order: 2;
+  }
+
   .nav-auth .nav-right-actions {
     width: auto;
     justify-content: flex-end;
   }
 
   .nav-login-form {
-    order: 2;
     width: 100%;
     margin-left: 0;
     justify-content: flex-start;
@@ -2119,7 +2201,9 @@ button.ghost {
 
   .project-grid,
   .partner-grid,
-  .project-summary-grid {
+  .project-summary-grid,
+  .messages-hero-card,
+  .messages-thread-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2132,5 +2216,16 @@ button.ghost {
     grid-auto-flow: column;
     justify-content: start;
   }
+}
 
+@media (max-width: 720px) {
+  .messages-toolbar-card,
+  .messages-thread-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .messages-summary-grid {
+    grid-template-columns: 1fr;
+  }
 }

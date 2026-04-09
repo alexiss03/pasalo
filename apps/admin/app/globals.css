@@ -103,6 +103,26 @@ button:disabled {
   gap: 12px;
 }
 
+.demo-credentials {
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.demo-credentials-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.demo-credentials-value {
+  font-size: 13px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .admin-form {
   display: grid;
   gap: 10px;

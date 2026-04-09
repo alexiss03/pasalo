@@ -17,7 +17,8 @@ type VerificationBatchResponse = {
 type UploadedPhoto = {
   id: string;
   fileName: string;
-  dataUrl: string;
+  previewUrl: string;
+  storageKey: string;
 };
 
 type UploadedDocMeta = {
@@ -29,6 +30,15 @@ type DevelopersCatalogResponse = {
   items: Array<{
     name: string;
   }>;
+};
+
+type UploadAssetResponse = {
+  provider: "local" | "supabase";
+  storageKey: string;
+  path: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
 };
 
 type PublishType = "normal" | "premium_top";
@@ -134,11 +144,6 @@ function formatStatusLabel(value: "pass" | "review" | "fail"): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function buildUploadedFileKey(fileName: string): string {
-  const safeName = fileName.trim().replace(/\s+/g, "_");
-  return `https://uploads.pasalo.local/${encodeURIComponent(safeName)}`;
-}
-
 export default function CreateListingPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -196,6 +201,7 @@ export default function CreateListingPage() {
 
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [assetUploadsInFlight, setAssetUploadsInFlight] = useState(0);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const signaturePadContainerRef = useRef<HTMLDivElement>(null);
@@ -495,6 +501,11 @@ export default function CreateListingPage() {
       setSubmitAction(null);
       return;
     }
+    if (assetUploadsInFlight > 0) {
+      setError("Wait for all uploads to finish before submitting.");
+      setSubmitAction(null);
+      return;
+    }
 
     if (isAuctionEnabled && auctionBiddingDays < 1) {
       setError("Set auction bidding days to at least 1 day.");
@@ -563,7 +574,7 @@ export default function CreateListingPage() {
       return;
     }
 
-    const cleanedPhotoUrls = uploadedPhotos.map((photo) => photo.dataUrl).filter(Boolean);
+    const cleanedPhotoUrls = uploadedPhotos.map((photo) => photo.storageKey).filter(Boolean);
     const normalizedUnitNumber = unitNumber.trim();
     const cleanedIdDocFileKey = idDocFileKey.trim();
     const cleanedTransferDocumentFileKey = transferDocumentFileKey.trim();
@@ -686,6 +697,28 @@ export default function CreateListingPage() {
       reader.readAsDataURL(file);
     });
 
+  const uploadFileToStorage = async (
+    file: File,
+    kind: "listing_photo" | "listing_verification",
+  ): Promise<UploadAssetResponse> => {
+    const token = getAuthToken();
+    if (!token) {
+      window.location.href = "/login?next=/create-listing";
+      throw new Error("Login first to upload files.");
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    return apiFetch<UploadAssetResponse>("/uploads", {
+      method: "POST",
+      token,
+      body: {
+        kind,
+        fileName: file.name,
+        dataUrl,
+      },
+    });
+  };
+
   const addViewingSlot = () => {
     if (!viewingSlotInput) {
       setError("Pick a viewing date and time first.");
@@ -731,6 +764,7 @@ export default function CreateListingPage() {
     }
 
     try {
+      setAssetUploadsInFlight((count) => count + 1);
       const next: UploadedPhoto[] = [];
       const rejectedFiles: string[] = [];
       for (const file of toProcess) {
@@ -743,10 +777,20 @@ export default function CreateListingPage() {
           continue;
         }
         const dataUrl = await readFileAsDataUrl(file);
+        const uploaded = await apiFetch<UploadAssetResponse>("/uploads", {
+          method: "POST",
+          token: getAuthToken(),
+          body: {
+            kind: "listing_photo",
+            fileName: file.name,
+            dataUrl,
+          },
+        });
         next.push({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           fileName: file.name,
-          dataUrl,
+          previewUrl: dataUrl,
+          storageKey: uploaded.storageKey,
         });
       }
 
@@ -769,6 +813,7 @@ export default function CreateListingPage() {
     } catch (uploadErr) {
       setError(uploadErr instanceof Error ? uploadErr.message : "Unable to upload photo.");
     } finally {
+      setAssetUploadsInFlight((count) => Math.max(0, count - 1));
       event.target.value = "";
     }
   };
@@ -781,7 +826,7 @@ export default function CreateListingPage() {
     setUploadedPhotos((prev) => prev.filter((photo) => photo.id !== id));
   };
 
-  const uploadVerificationDoc = (
+  const uploadVerificationDoc = async (
     event: ChangeEvent<HTMLInputElement>,
     onMeta: (meta: UploadedDocMeta | null) => void,
     onKey: (value: string) => void,
@@ -793,14 +838,24 @@ export default function CreateListingPage() {
       return;
     }
 
-    const meta = {
-      fileName: file.name,
-      storageKey: buildUploadedFileKey(file.name),
-    };
-    onMeta(meta);
-    onKey(meta.storageKey);
-    setError(null);
-    event.target.value = "";
+    try {
+      setAssetUploadsInFlight((count) => count + 1);
+      const uploaded = await uploadFileToStorage(file, "listing_verification");
+      const meta = {
+        fileName: uploaded.fileName,
+        storageKey: uploaded.storageKey,
+      };
+      onMeta(meta);
+      onKey(meta.storageKey);
+      setError(null);
+    } catch (uploadErr) {
+      onMeta(null);
+      onKey("");
+      setError(uploadErr instanceof Error ? uploadErr.message : "Unable to upload document.");
+    } finally {
+      setAssetUploadsInFlight((count) => Math.max(0, count - 1));
+      event.target.value = "";
+    }
   };
 
   return (
@@ -1051,19 +1106,24 @@ export default function CreateListingPage() {
               type="file"
             />
           </div>
-          <p className="small" style={{ margin: 0 }}>
-            Upload image files up to 5MB each. First uploaded photo is set as primary.
-          </p>
-          <div className="grid">
-            {!uploadedPhotos.length && <p className="small" style={{ margin: 0 }}>No photo uploaded yet.</p>}
-            {uploadedPhotos.map((photo, index) => (
-              <div className="field-row" key={photo.id} style={{ alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  <img
-                    alt={photo.fileName}
-                    src={photo.dataUrl}
-                    style={{ width: 64, height: 46, objectFit: "cover", border: "1px solid #d7dbe1", flexShrink: 0 }}
-                  />
+	          <p className="small" style={{ margin: 0 }}>
+	            Upload image files up to 5MB each. First uploaded photo is set as primary.
+	          </p>
+	          {assetUploadsInFlight > 0 && (
+	            <p className="small" style={{ margin: 0 }}>
+	              Uploading files...
+	            </p>
+	          )}
+	          <div className="grid">
+	            {!uploadedPhotos.length && <p className="small" style={{ margin: 0 }}>No photo uploaded yet.</p>}
+	            {uploadedPhotos.map((photo, index) => (
+	              <div className="field-row" key={photo.id} style={{ alignItems: "center" }}>
+	                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+	                  <img
+	                    alt={photo.fileName}
+	                    src={photo.previewUrl}
+	                    style={{ width: 64, height: 46, objectFit: "cover", border: "1px solid #d7dbe1", flexShrink: 0 }}
+	                  />
                   <div style={{ minWidth: 0 }}>
                     <p className="small" style={{ margin: 0, fontWeight: 600, color: "#222733" }}>
                       {index === 0 ? "Primary photo" : `Photo ${index + 1}`}
@@ -1089,11 +1149,11 @@ export default function CreateListingPage() {
 
           <div className="form-field">
             <label className="field-label">Seller Valid ID</label>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={(e) => uploadVerificationDoc(e, setIdDocMeta, setIdDocFileKey)}
-            />
+	            <input
+	              type="file"
+	              accept=".pdf,image/*"
+	              onChange={(e) => void uploadVerificationDoc(e, setIdDocMeta, setIdDocFileKey)}
+	            />
             <p className="field-note">
               {idDocMeta ? `Uploaded: ${idDocMeta.fileName}` : "No file uploaded yet."}
             </p>
@@ -1101,11 +1161,11 @@ export default function CreateListingPage() {
 
           <div className="form-field">
             <label className="field-label">Transfer Document</label>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={(e) => uploadVerificationDoc(e, setTransferDocMeta, setTransferDocumentFileKey)}
-            />
+	            <input
+	              type="file"
+	              accept=".pdf,image/*"
+	              onChange={(e) => void uploadVerificationDoc(e, setTransferDocMeta, setTransferDocumentFileKey)}
+	            />
             <p className="field-note">
               {transferDocMeta ? `Uploaded: ${transferDocMeta.fileName}` : "No file uploaded yet."}
             </p>
@@ -1113,11 +1173,11 @@ export default function CreateListingPage() {
 
           <div className="form-field">
             <label className="field-label">Title / Tax Declaration</label>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={(e) => uploadVerificationDoc(e, setTitleDocMeta, setTitleDeclarationFileKey)}
-            />
+	            <input
+	              type="file"
+	              accept=".pdf,image/*"
+	              onChange={(e) => void uploadVerificationDoc(e, setTitleDocMeta, setTitleDeclarationFileKey)}
+	            />
             <p className="field-note">
               {titleDocMeta ? `Uploaded: ${titleDocMeta.fileName}` : "No file uploaded yet."}
             </p>
@@ -1125,11 +1185,11 @@ export default function CreateListingPage() {
 
           <div className="form-field">
             <label className="field-label">Authority Document</label>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={(e) => uploadVerificationDoc(e, setAuthorityDocMeta, setAuthorityDocumentFileKey)}
-            />
+	            <input
+	              type="file"
+	              accept=".pdf,image/*"
+	              onChange={(e) => void uploadVerificationDoc(e, setAuthorityDocMeta, setAuthorityDocumentFileKey)}
+	            />
             <p className="field-note">
               {authorityDocMeta
                 ? `Uploaded: ${authorityDocMeta.fileName}`

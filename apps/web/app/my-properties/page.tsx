@@ -127,8 +127,8 @@ export default function MyPropertiesPage() {
   if (requiresLogin) {
     return (
       <section className="card page-card">
-        <h1 style={{ marginTop: 0 }}>Property Hub</h1>
-        <p className="small">Login to view your listing portfolio and saved properties.</p>
+        <h1 style={{ marginTop: 0 }}>Listing Hub</h1>
+        <p className="small">Login to view your listing portfolio and saved favorites.</p>
         <Link className="nav-action" href="/login?next=%2Fmy-properties">
           Login
         </Link>
@@ -183,7 +183,7 @@ export default function MyPropertiesPage() {
   return (
     <section className="market-section">
       <div className="peg-results-head">
-        <h3>Property Hub</h3>
+        <h3>Listing Hub</h3>
       </div>
 
       <div className="segmented-control">
@@ -201,11 +201,11 @@ export default function MyPropertiesPage() {
           onClick={() => switchTab("saved")}
           type="button"
         >
-          Saved Properties
+          Saved Favorites
         </button>
       </div>
 
-      {isLoading && <p className="small">Loading your properties...</p>}
+      {isLoading && <p className="small">Loading your listings...</p>}
       {error && <p className="error">{error}</p>}
 
       {!isLoading && !error && activeTab === "my-listings" && (
@@ -218,7 +218,7 @@ export default function MyPropertiesPage() {
       {!isLoading && !error && activeTab === "saved" && (
         <>
           <div className="section-grid">{savedListings.map(renderSavedCard)}</div>
-          {!savedListings.length && <p className="section-empty">You have no saved properties yet.</p>}
+          {!savedListings.length && <p className="section-empty">You have no saved favorites yet.</p>}
         </>
       )}
     </section>

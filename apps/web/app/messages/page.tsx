@@ -78,6 +78,14 @@ function normalizeText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function getUnreadConversationCount(items: ConversationItem[]): number {
+  return items.filter((item) => item.unread_count > 0).length;
+}
+
+function getUnreadMessageCount(items: ConversationItem[]): number {
+  return items.reduce((sum, item) => sum + Number(item.unread_count ?? 0), 0);
+}
+
 export default function MessagesPage() {
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +118,9 @@ export default function MessagesPage() {
     });
   }, [items, query]);
 
+  const unreadConversationCount = getUnreadConversationCount(items);
+  const unreadMessageCount = getUnreadMessageCount(items);
+
   useEffect(() => {
     const token = getAuthToken();
     if (!token) {
@@ -136,9 +147,31 @@ export default function MessagesPage() {
   }, []);
 
   return (
-    <section className="grid" style={{ gap: 12 }}>
-      <div className="card">
-        <h1 style={{ marginTop: 0, marginBottom: 10 }}>Messages</h1>
+    <section className="grid" style={{ gap: 14 }}>
+      <div className="card messages-hero-card">
+        <div className="messages-hero-copy">
+          <h1 style={{ marginTop: 0, marginBottom: 8 }}>Messages</h1>
+          <p className="small" style={{ marginTop: 0, marginBottom: 0 }}>
+            Manage listing conversations, unread replies, and payment-safe buyer communication in one place.
+          </p>
+        </div>
+        <div className="messages-summary-grid">
+          <article className="messages-summary-tile">
+            <span className="messages-summary-label">Conversations</span>
+            <strong>{items.length}</strong>
+          </article>
+          <article className="messages-summary-tile">
+            <span className="messages-summary-label">Unread threads</span>
+            <strong>{unreadConversationCount}</strong>
+          </article>
+          <article className="messages-summary-tile">
+            <span className="messages-summary-label">Unread messages</span>
+            <strong>{unreadMessageCount}</strong>
+          </article>
+        </div>
+      </div>
+
+      <div className="card messages-toolbar-card">
         <input
           aria-label="Search conversations"
           className="message-search-input"
@@ -146,6 +179,9 @@ export default function MessagesPage() {
           placeholder="Search listing, buyer, seller, or message..."
           value={query}
         />
+        <Link className="ghost" href="/">
+          Browse listings
+        </Link>
       </div>
 
       {loading && (
@@ -171,6 +207,13 @@ export default function MessagesPage() {
               ? "No conversations match your search."
               : "No conversations yet. Open any listing and tap Message Seller."}
           </p>
+          {!items.length && (
+            <div style={{ marginTop: 12 }}>
+              <Link className="primary" href="/">
+                Explore pasalo listings
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -181,7 +224,7 @@ export default function MessagesPage() {
               <div className="message-row-main">
                 <p className="message-row-title">{item.listing_title}</p>
                 <p className="message-row-meta">
-                  {getConversationCounterparty(item)} - {formatDateTime(item.last_message_at ?? item.created_at)}
+                  {getConversationCounterparty(item)} • {formatDateTime(item.last_message_at ?? item.created_at)}
                 </p>
                 <p className="message-row-preview">{item.last_message_body ?? "Start the conversation"}</p>
               </div>

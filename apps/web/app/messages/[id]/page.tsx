@@ -45,6 +45,10 @@ type PaymentIntent = {
 };
 
 type Feed<T> = { items: T[] };
+type ThreadParticipant = {
+  label: string;
+  value: string;
+};
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("en-PH", {
@@ -75,6 +79,17 @@ function formatStatusLabel(value: string): string {
     return value;
   }
   return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+function getParticipants(conversation: Conversation | null): ThreadParticipant[] {
+  if (!conversation) {
+    return [];
+  }
+
+  return [
+    { label: "Buyer", value: conversation.buyer_name },
+    { label: "Seller", value: conversation.seller_name },
+  ];
 }
 
 export default function ConversationPage() {
@@ -152,6 +167,9 @@ export default function ConversationPage() {
     }
     return me.id === conversation.seller_user_id;
   }, [me, conversation]);
+
+  const participants = useMemo(() => getParticipants(conversation), [conversation]);
+  const pendingPayments = paymentIntents.filter((intent) => intent.status === "pending").length;
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -254,139 +272,179 @@ export default function ConversationPage() {
   return (
     <section className="grid" style={{ gap: 16 }}>
       <div className="card">
-        <p style={{ marginTop: 0 }}>
-          <Link className="nav-chip" href="/messages">
-            Messages
-          </Link>
-        </p>
-        <h1 style={{ marginBottom: 8 }}>{conversation?.listing_title}</h1>
+        <div className="messages-thread-header">
+          <div>
+            <p style={{ marginTop: 0 }}>
+              <Link className="nav-chip" href="/messages">
+                Messages
+              </Link>
+            </p>
+            <h1 style={{ marginBottom: 6 }}>{conversation?.listing_title}</h1>
+            <p className="small" style={{ margin: 0 }}>
+              Keep pricing and transfer questions here. Payment negotiation in free text is blocked and should move through the in-app payment request flow.
+            </p>
+          </div>
+          {conversation && (
+            <Link className="ghost" href={`/listings/${conversation.listing_id}`}>
+              View listing
+            </Link>
+          )}
+        </div>
       </div>
 
-      <div className="card chat-thread">
-        {!messages.length && <p className="small">No messages yet.</p>}
-        {messages.map((message) => {
-          const mine = me?.id === message.sender_user_id;
-          return (
-            <article className={`chat-message ${mine ? "chat-message-mine" : ""}`} key={message.id}>
-              <p style={{ margin: 0 }}>{message.body}</p>
-              <p className="small" style={{ margin: "6px 0 0" }}>
-                {formatDateTime(message.created_at)} • {formatMinutesAgo(message.created_at)}
-              </p>
-              {mine && (
-                <p className="small" style={{ margin: "2px 0 0" }}>
-                  {message.read_at ? `Read ${formatMinutesAgo(message.read_at)}` : "Unread"}
-                </p>
-              )}
-            </article>
-          );
-        })}
-      </div>
+      <div className="messages-thread-grid">
+        <div className="grid" style={{ gap: 16 }}>
+          <div className="card chat-thread">
+            {!messages.length && <p className="small">No messages yet.</p>}
+            {messages.map((message) => {
+              const mine = me?.id === message.sender_user_id;
+              return (
+                <article className={`chat-message ${mine ? "chat-message-mine" : ""}`} key={message.id}>
+                  <p style={{ margin: 0 }}>{message.body}</p>
+                  <p className="small" style={{ margin: "6px 0 0" }}>
+                    {formatDateTime(message.created_at)} • {formatMinutesAgo(message.created_at)}
+                  </p>
+                  {mine && (
+                    <p className="small" style={{ margin: "2px 0 0" }}>
+                      {message.read_at ? `Read ${formatMinutesAgo(message.read_at)}` : "Unread"}
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
 
-      <form className="card grid" onSubmit={sendMessage}>
-        <label>
-          <div className="small" style={{ marginBottom: 6 }}>Message</div>
-          <textarea
-            value={messageBody}
-            onChange={(event) => setMessageBody(event.target.value)}
-            rows={3}
-            maxLength={2000}
-            placeholder="Ask about viewing, unit condition, and transfer process."
-            required
-          />
-        </label>
-        <button className="primary" type="submit">Send Message</button>
-      </form>
-
-      <div className="card grid" style={{ gap: 10 }}>
-        <h2 style={{ marginTop: 0, marginBottom: 0 }}>In-App Payments</h2>
-
-        {canCreatePaymentIntent && (
-          <form className="grid" onSubmit={createPaymentIntent}>
+          <form className="card grid" onSubmit={sendMessage}>
             <label>
-              <div className="small" style={{ marginBottom: 6 }}>Amount (PHP)</div>
-              <input
-                type="number"
-                min={1}
-                step="0.01"
-                value={paymentAmount}
-                onChange={(event) => setPaymentAmount(event.target.value)}
+              <div className="small" style={{ marginBottom: 6 }}>Message</div>
+              <textarea
+                value={messageBody}
+                onChange={(event) => setMessageBody(event.target.value)}
+                rows={3}
+                maxLength={2000}
+                placeholder="Ask about viewing, unit condition, and transfer process."
                 required
               />
             </label>
-            <label>
-              <div className="small" style={{ marginBottom: 6 }}>Note (optional)</div>
-              <input
-                type="text"
-                maxLength={600}
-                value={paymentNote}
-                onChange={(event) => setPaymentNote(event.target.value)}
-                placeholder="Example: Reservation transfer fee"
-              />
-            </label>
-            <button className="primary" type="submit">Create Payment Request</button>
+            <button className="primary" type="submit">Send Message</button>
           </form>
-        )}
+        </div>
 
-        {!paymentIntents.length && <p className="small" style={{ margin: 0 }}>No payment requests yet.</p>}
-
-        <div className="grid">
-          {paymentIntents.map((intent) => {
-            const canPay = intent.status === "pending" && (me?.id === intent.payer_user_id || me?.role === "admin");
-            const canCancel =
-              intent.status === "pending" &&
-              (me?.id === intent.payer_user_id || me?.id === intent.payee_user_id || me?.role === "admin");
-
-            return (
-              <article className="card" key={intent.id} style={{ padding: 14 }}>
-                <p style={{ margin: 0 }}>
-                  <strong>{formatPhp(intent.amount_php)}</strong> • {formatStatusLabel(intent.status)}
+        <aside className="grid" style={{ gap: 16 }}>
+          <div className="card grid" style={{ gap: 10 }}>
+            <h2 style={{ marginTop: 0, marginBottom: 0 }}>Conversation Details</h2>
+            <div className="message-thread-details">
+              {participants.map((participant) => (
+                <p className="detail-row" key={participant.label}>
+                  <span>{participant.label}</span>
+                  <strong>{participant.value}</strong>
                 </p>
-                {intent.note && (
-                  <p className="small" style={{ margin: "6px 0" }}>
-                    {intent.note}
-                  </p>
-                )}
-                {intent.paymongo_last_status && (
-                  <p className="small" style={{ margin: "4px 0 0" }}>
-                    PayMongo: {formatStatusLabel(intent.paymongo_last_status)}
-                  </p>
-                )}
-                <p className="small" style={{ margin: "4px 0 0" }}>
-                  Created: {formatDateTime(intent.created_at)}
-                </p>
-                {intent.paid_at && (
-                  <p className="small" style={{ margin: "4px 0 0" }}>
-                    Paid: {formatDateTime(intent.paid_at)}
-                  </p>
-                )}
+              ))}
+              <p className="detail-row">
+                <span>Messages</span>
+                <strong>{messages.length}</strong>
+              </p>
+              <p className="detail-row">
+                <span>Pending payments</span>
+                <strong>{pendingPayments}</strong>
+              </p>
+            </div>
+          </div>
 
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  {canPay && (
-                    <>
-                      {intent.paymongo_checkout_url && (
-                        <button
-                          className="primary"
-                          onClick={() => window.open(intent.paymongo_checkout_url as string, "_blank", "noopener,noreferrer")}
-                          type="button"
-                        >
-                          Pay with PayMongo
+          <div className="card grid" style={{ gap: 10 }}>
+            <h2 style={{ marginTop: 0, marginBottom: 0 }}>In-App Payments</h2>
+
+            {canCreatePaymentIntent && (
+              <form className="grid" onSubmit={createPaymentIntent}>
+                <label>
+                  <div className="small" style={{ marginBottom: 6 }}>Amount (PHP)</div>
+                  <input
+                    type="number"
+                    min={1}
+                    step="0.01"
+                    value={paymentAmount}
+                    onChange={(event) => setPaymentAmount(event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  <div className="small" style={{ marginBottom: 6 }}>Note (optional)</div>
+                  <input
+                    type="text"
+                    maxLength={600}
+                    value={paymentNote}
+                    onChange={(event) => setPaymentNote(event.target.value)}
+                    placeholder="Example: Reservation transfer fee"
+                  />
+                </label>
+                <button className="primary" type="submit">Create Payment Request</button>
+              </form>
+            )}
+
+            {!paymentIntents.length && <p className="small" style={{ margin: 0 }}>No payment requests yet.</p>}
+
+            <div className="grid">
+              {paymentIntents.map((intent) => {
+                const canPay = intent.status === "pending" && (me?.id === intent.payer_user_id || me?.role === "admin");
+                const canCancel =
+                  intent.status === "pending" &&
+                  (me?.id === intent.payer_user_id || me?.id === intent.payee_user_id || me?.role === "admin");
+
+                return (
+                  <article className="card" key={intent.id} style={{ padding: 14 }}>
+                    <p style={{ margin: 0 }}>
+                      <strong>{formatPhp(intent.amount_php)}</strong> • {formatStatusLabel(intent.status)}
+                    </p>
+                    {intent.note && (
+                      <p className="small" style={{ margin: "6px 0" }}>
+                        {intent.note}
+                      </p>
+                    )}
+                    {intent.paymongo_last_status && (
+                      <p className="small" style={{ margin: "4px 0 0" }}>
+                        PayMongo: {formatStatusLabel(intent.paymongo_last_status)}
+                      </p>
+                    )}
+                    <p className="small" style={{ margin: "4px 0 0" }}>
+                      Created: {formatDateTime(intent.created_at)}
+                    </p>
+                    {intent.paid_at && (
+                      <p className="small" style={{ margin: "4px 0 0" }}>
+                        Paid: {formatDateTime(intent.paid_at)}
+                      </p>
+                    )}
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                      {canPay && (
+                        <>
+                          {intent.paymongo_checkout_url && (
+                            <button
+                              className="primary"
+                              onClick={() =>
+                                window.open(intent.paymongo_checkout_url as string, "_blank", "noopener,noreferrer")
+                              }
+                              type="button"
+                            >
+                              Pay with PayMongo
+                            </button>
+                          )}
+                          <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "refresh")} type="button">
+                            Refresh Status
+                          </button>
+                        </>
+                      )}
+                      {canCancel && (
+                        <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "cancel")} type="button">
+                          Cancel Request
                         </button>
                       )}
-                      <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "refresh")} type="button">
-                        Refresh Status
-                      </button>
-                    </>
-                  )}
-                  {canCancel && (
-                    <button className="ghost" onClick={() => updatePaymentIntent(intent.id, "cancel")} type="button">
-                      Cancel Request
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
       </div>
 
       {status && <p>{status}</p>}
